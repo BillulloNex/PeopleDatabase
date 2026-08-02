@@ -23,9 +23,7 @@ function seedMockDataIfEmpty() {
         location: 'San Francisco, CA',
         skills: ['Python', 'TypeScript', 'PyTorch', 'Distributed Systems', 'LLMs'],
         socialLinks: [
-          { platform: 'github', url: 'https://github.com/alexvance', handle: 'alexvance' },
-          { platform: 'linkedin', url: 'https://linkedin.com/in/alexvance', handle: 'alexvance' },
-          { platform: 'twitter', url: 'https://x.com/alexvance_ai', handle: 'alexvance_ai' }
+          { platform: 'github', url: 'https://github.com/torvalds', handle: 'torvalds' }
         ],
         avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
         matchConfidence: 0.98,

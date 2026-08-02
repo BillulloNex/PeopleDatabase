@@ -39,7 +39,14 @@ export async function extractPersonProfileWithAI(rawText: string, sourceUrl: str
   }
 
   try {
-    const prompt = `Extract all person details from the following web text/source (${sourceUrl}). Return JSON only matching the schema:
+    const prompt = `Extract all person details from the following web text/source (${sourceUrl}). 
+
+CRITICAL GUARDRAILS:
+- ONLY extract social links (LinkedIn, Twitter/X, GitHub, Website) that are EXPLICITLY present as real, verbatim URLs in the source content below.
+- NEVER invent, guess, or hallucinate social profile URLs or handles if they are not explicitly in the text.
+- If a social link is not found in the source text, omit it from socialLinks.
+
+Return JSON matching the schema:
 {
   "fullName": string,
   "headline": string,
@@ -59,7 +66,7 @@ ${rawText.slice(0, 10000)}`;
     const response = await openrouter.chat.completions.create({
       model: OPENROUTER_MODELS.FAST_EXTRACTION,
       messages: [
-        { role: 'system', content: 'You are an expert AI entity extractor. Extract precise person profiles in valid JSON.' },
+        { role: 'system', content: 'You are an expert AI entity extractor. Extract precise person profiles in valid JSON. Never hallucinate URLs.' },
         { role: 'user', content: prompt }
       ],
       response_format: { type: 'json_object' }
