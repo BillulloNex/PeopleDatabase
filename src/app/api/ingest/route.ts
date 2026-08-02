@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { extractPersonProfileWithAI } from '@/lib/openrouter';
-import { upsertExtractedProfile } from '@/resolver/matcher';
+import { upsertExtractedProfile, logIngestionRun } from '@/resolver/matcher';
 
 export async function POST(request: Request) {
+  const startTime = Date.now();
   try {
     const authHeader = request.headers.get('Authorization');
     const webhookSecret = process.env.INGESTION_WEBHOOK_SECRET;
@@ -30,6 +31,19 @@ export async function POST(request: Request) {
     }
 
     const person = await upsertExtractedProfile(profileToUpsert);
+    const durationMs = Date.now() - startTime;
+
+    // Record Run Log
+    await logIngestionRun({
+      runType: 'single_webhook',
+      queryOrSource: sourceUrl || profileToUpsert.fullName || 'Single Ingestion Webhook',
+      status: 'success',
+      processedCount: 1,
+      createdCount: 1,
+      mergedCount: 0,
+      durationMs,
+      entities: [{ id: person.id, fullName: person.fullName, isNew: true }]
+    });
 
     return NextResponse.json({
       success: true,

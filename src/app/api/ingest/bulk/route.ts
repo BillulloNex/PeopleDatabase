@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { extractPersonProfileWithAI } from '@/lib/openrouter';
-import { upsertExtractedProfile } from '@/resolver/matcher';
+import { upsertExtractedProfile, logIngestionRun } from '@/resolver/matcher';
 import { PersonRecord } from '@/db/client';
 
 export async function POST(request: Request) {
@@ -59,6 +59,19 @@ export async function POST(request: Request) {
     }
 
     const durationMs = Date.now() - startTime;
+
+    // Record Run Log
+    await logIngestionRun({
+      runType: 'bulk_webhook',
+      queryOrSource: `Bulk Ingest Batch (${items.length} items)`,
+      status: errors.length === 0 ? 'success' : results.length > 0 ? 'partial_success' : 'failed',
+      processedCount: results.length,
+      createdCount: results.length,
+      mergedCount: 0,
+      durationMs,
+      entities: results.map(r => ({ id: r.id, fullName: r.fullName, isNew: true }))
+    });
+
     return NextResponse.json({
       success: true,
       batchSize: items.length,

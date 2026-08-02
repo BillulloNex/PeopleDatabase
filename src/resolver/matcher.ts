@@ -1,5 +1,82 @@
-import { dbPool, meili, PersonRecord } from '../db/client';
+import { dbPool, meili, PersonRecord, IngestionRunLog } from '../db/client';
 import { ExtractedPersonProfile, evaluateEntityMergeWithAI } from '../lib/openrouter';
+
+const runLogsStore: IngestionRunLog[] = [];
+
+/**
+ * Logs an ingestion run (whether GHA matrix, Exa search, GitHub worker, or webhook).
+ */
+export async function logIngestionRun(logData: Omit<IngestionRunLog, 'id' | 'timestamp'>): Promise<IngestionRunLog> {
+  const logRecord: IngestionRunLog = {
+    ...logData,
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString()
+  };
+
+  runLogsStore.unshift(logRecord);
+  if (runLogsStore.length > 100) runLogsStore.pop(); // Keep 100 most recent run logs in RAM
+
+  try {
+    const client = await dbPool.connect();
+    try {
+      await client.query(
+        `INSERT INTO ingestion_run_logs 
+          (id, run_type, query_or_source, status, processed_count, created_count, merged_count, duration_ms, entities, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          logRecord.id,
+          logRecord.runType,
+          logRecord.queryOrSource,
+          logRecord.status,
+          logRecord.processedCount,
+          logRecord.createdCount,
+          logRecord.mergedCount,
+          logRecord.durationMs,
+          JSON.stringify(logRecord.entities),
+          logRecord.timestamp
+        ]
+      );
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    // DB offline -> fallback to runLogsStore memory
+  }
+
+  return logRecord;
+}
+
+/**
+ * Fetches recent ingestion run logs.
+ */
+export async function getRecentIngestionRuns(): Promise<IngestionRunLog[]> {
+  try {
+    const client = await dbPool.connect();
+    try {
+      const res = await client.query('SELECT * FROM ingestion_run_logs ORDER BY timestamp DESC LIMIT 50');
+      if (res.rows.length > 0) {
+        return res.rows.map(row => ({
+          id: row.id,
+          runType: row.run_type,
+          queryOrSource: row.query_or_source,
+          status: row.status,
+          processedCount: row.processed_count,
+          createdCount: row.created_count,
+          mergedCount: row.merged_count,
+          durationMs: row.duration_ms,
+          timestamp: row.timestamp,
+          entities: row.entities || []
+        }));
+      }
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    // DB offline fallback
+  }
+
+  return runLogsStore;
+}
 
 // In-memory fallback store for zero-config local testing and development
 const memoryStore: Map<string, PersonRecord> = new Map();

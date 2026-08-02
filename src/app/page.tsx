@@ -19,10 +19,11 @@ import {
   Layers,
   Cpu
 } from 'lucide-react';
-import { PersonRecord } from '@/db/client';
+import { PersonRecord, IngestionRunLog } from '@/db/client';
 
 export default function PeopleExplorerPage() {
   const [people, setPeople] = useState<PersonRecord[]>([]);
+  const [runs, setRuns] = useState<IngestionRunLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [skillFilter, setSkillFilter] = useState('');
@@ -31,6 +32,7 @@ export default function PeopleExplorerPage() {
   
   // Modal states
   const [isIngestModalOpen, setIsIngestModalOpen] = useState(false);
+  const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
   const [exaQuery, setExaQuery] = useState('');
   const [githubUser, setGithubUser] = useState('');
   const [ingestLoading, setIngestLoading] = useState(false);
@@ -38,7 +40,20 @@ export default function PeopleExplorerPage() {
 
   useEffect(() => {
     fetchPeople();
+    fetchRuns();
   }, [query, skillFilter, locationFilter]);
+
+  async function fetchRuns() {
+    try {
+      const res = await fetch('/api/runs');
+      const json = await res.json();
+      if (json.success) {
+        setRuns(json.data);
+      }
+    } catch (err) {
+      console.error('Failed to load run logs:', err);
+    }
+  }
 
   async function fetchPeople() {
     setLoading(true);
@@ -178,17 +193,25 @@ export default function PeopleExplorerPage() {
             <span>Quick Actions</span>
             <Sparkles className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="flex gap-2 mt-3">
+          <div className="flex gap-1.5 mt-3">
             <button
               onClick={() => setIsIngestModalOpen(true)}
-              className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1 shadow-lg shadow-indigo-600/20"
+              className="flex-1 py-2 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all flex items-center justify-center gap-1 shadow-lg shadow-indigo-600/20"
             >
               <Plus className="w-3.5 h-3.5" />
-              Ingest Seed
+              Ingest
+            </button>
+            <button
+              onClick={() => { fetchRuns(); setIsLogsModalOpen(true); }}
+              className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 font-semibold text-xs border border-slate-700 transition-all flex items-center gap-1"
+              title="View Run Activity Logs"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Logs ({runs.length})
             </button>
             <button
               onClick={exportToCSV}
-              className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition-all flex items-center gap-1"
+              className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition-all flex items-center gap-1"
             >
               <Download className="w-3.5 h-3.5" />
               Export
@@ -509,6 +532,97 @@ export default function PeopleExplorerPage() {
                 Ingest GitHub User
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Ingestion Run Activity Logs Modal */}
+      {isLogsModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0F1626] border border-slate-700/80 rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-6 shadow-2xl relative">
+            <button
+              onClick={() => setIsLogsModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-emerald-400" />
+                  Ingestion Run Activity Logs
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Live audit trail of automated GHA matrix runs, Exa discovery, and bulk webhooks.
+                </p>
+              </div>
+              <button
+                onClick={fetchRuns}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 border border-slate-700 flex items-center gap-1.5 transition-all"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh Logs
+              </button>
+            </div>
+
+            {runs.length === 0 ? (
+              <div className="text-center py-12 bg-[#0B0F17] rounded-xl border border-slate-800 text-slate-500 text-xs">
+                No run execution logs recorded yet. Run an ingestion job to see real-time logs here!
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {runs.map((run) => (
+                  <div
+                    key={run.id}
+                    className="p-4 rounded-xl bg-[#0B0F17] border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          run.status === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                          run.status === 'partial_success' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                          'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                        }`}>
+                          {run.runType.replace('_', ' ')}
+                        </span>
+                        <span className="text-xs font-bold text-slate-200 truncate">
+                          {run.queryOrSource}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-xs text-slate-400 pt-0.5">
+                        <span>Processed: <strong className="text-white">{run.processedCount}</strong></span>
+                        <span>Created: <strong className="text-emerald-400">{run.createdCount}</strong></span>
+                        <span>Duration: <strong className="text-indigo-400">{run.durationMs}ms</strong></span>
+                      </div>
+
+                      {run.entities.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1.5">
+                          {run.entities.map((e, idx) => (
+                            <span key={idx} className="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 font-medium">
+                              {e.fullName}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-[11px] text-slate-500 font-mono whitespace-nowrap self-end sm:self-center">
+                      {new Date(run.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="pt-4 border-t border-slate-800 flex justify-end">
+              <button
+                onClick={() => setIsLogsModalOpen(false)}
+                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs transition-all"
+              >
+                Close Logs
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -38,6 +38,19 @@ export interface PersonRecord {
   updatedAt: string;
 }
 
+export interface IngestionRunLog {
+  id: string;
+  runType: 'exa_search' | 'github_worker' | 'bulk_webhook' | 'single_webhook';
+  queryOrSource: string;
+  status: 'success' | 'partial_success' | 'failed';
+  processedCount: number;
+  createdCount: number;
+  mergedCount: number;
+  durationMs: number;
+  timestamp: string;
+  entities: { id: string; fullName: string; isNew: boolean }[];
+}
+
 /**
  * Ensures PostgreSQL tables & pgvector extension are created if not present.
  */
@@ -77,6 +90,19 @@ export async function initDatabaseSchema(): Promise<void> {
         source_url TEXT NOT NULL,
         raw_payload JSONB,
         ingested_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS ingestion_run_logs (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        run_type TEXT NOT NULL,
+        query_or_source TEXT NOT NULL,
+        status TEXT NOT NULL,
+        processed_count INT DEFAULT 0,
+        created_count INT DEFAULT 0,
+        merged_count INT DEFAULT 0,
+        duration_ms INT DEFAULT 0,
+        entities JSONB DEFAULT '[]',
+        timestamp TIMESTAMPTZ DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS outreach_lists (
