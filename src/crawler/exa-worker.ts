@@ -8,17 +8,37 @@ export async function runExaDiscoveryWorker(query: string = 'founders of AI star
 
   console.log(`[Exa Worker] Found ${exaResults.length} profile candidates.`);
 
-  const processed = [];
-  for (const item of exaResults) {
-    console.log(`[Exa Worker] Processing page: ${item.title} (${item.url})`);
-    const rawContent = item.text || item.title;
-    const extracted = await extractPersonProfileWithAI(rawContent, item.url);
-    const person = await upsertExtractedProfile(extracted);
-    processed.push(person);
-    console.log(`[Exa Worker] Successfully upserted entity: ${person.fullName} (${person.id})`);
+  if (exaResults.length === 0) {
+    return [];
   }
 
-  return processed;
+  const itemsToIngest = exaResults.map(item => ({
+    rawText: item.text || item.title,
+    sourceUrl: item.url
+  }));
+
+  const targetAppUrl = process.env.PRODUCTION_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://people.beenex.org';
+  const bulkEndpoint = `${targetAppUrl.replace(/\/$/, '')}/api/ingest/bulk`;
+
+  console.log(`[Exa Worker] Sending ${itemsToIngest.length} profiles in bulk batch to production API: ${bulkEndpoint}`);
+
+  try {
+    const res = await fetch(bulkEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.INGESTION_WEBHOOK_SECRET ? { Authorization: `Bearer ${process.env.INGESTION_WEBHOOK_SECRET}` } : {})
+      },
+      body: JSON.stringify({ items: itemsToIngest })
+    });
+
+    const json = await res.json();
+    console.log(`[Exa Worker] Live Bulk Response:`, JSON.stringify(json));
+    return json.data || [];
+  } catch (err: any) {
+    console.error(`[Exa Worker] Failed to send bulk payload to production API:`, err.message);
+    return [];
+  }
 }
 
 if (require.main === module) {
