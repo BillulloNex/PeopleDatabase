@@ -276,7 +276,7 @@ export default function PeopleExplorerPage() {
                     <h3 className="font-bold text-base text-slate-100 truncate flex items-center gap-1.5">
                       {person.fullName}
                       {person.matchConfidence > 0.9 && (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 inline" title="High Confidence Match" />
+                        <span title="High Confidence Match"><CheckCircle2 className="w-4 h-4 text-emerald-400 inline" /></span>
                       )}
                     </h3>
                     <p className="text-xs text-indigo-400 font-medium truncate">
