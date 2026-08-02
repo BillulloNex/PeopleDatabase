@@ -7,30 +7,14 @@ on:
 
 permissions:
   contents: write
-  actions: read
 
 jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: backups
-          fetch-depth: 1
-        continue-on-error: true
-
-      - name: 🔧 Initialize backups branch if needed
-        run: |
-          if [ ! -d ".git" ]; then
-            git init
-            git remote add origin https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
-            git checkout -b backups
-          fi
-
       - name: 📥 Export all profiles from production
         run: |
           mkdir -p snapshots
-          
           curl -sf 'http://people.beenex.org/api/search?limit=50000' \
             -o snapshots/profiles_latest.json || echo '{"total":0,"data":[]}' > snapshots/profiles_latest.json
           
@@ -38,20 +22,30 @@ jobs:
           echo "TOTAL=$TOTAL" >> $GITHUB_ENV
           echo "Exported $TOTAL profiles"
 
-      - name: 📤 Commit backup
+      - name: 📤 Push backup to backups branch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+          
+          # Clone repo (shallow)
+          git clone --depth 1 https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git /tmp/repo || true
+          cd /tmp/repo
+          
           git config user.name "PeopleDB Backup Bot"
           git config user.email "backup@peopledatabase.beenex.org"
           
-          TIMESTAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+          # Switch to backups branch (create if doesn't exist)
+          git checkout backups 2>/dev/null || git checkout --orphan backups
           
-          # Keep a timestamped copy
-          cp snapshots/profiles_latest.json "snapshots/profiles_${TIMESTAMP}.json"
+          # Clean everything and add fresh backup
+          git rm -rf . 2>/dev/null || true
+          mkdir -p snapshots
           
-          # Purge old snapshots (keep last 48)
-          ls -t snapshots/profiles_2*.json 2>/dev/null | tail -n +49 | xargs rm -f 2>/dev/null || true
+          cp $GITHUB_WORKSPACE/snapshots/profiles_latest.json snapshots/profiles_latest.json
+          cp $GITHUB_WORKSPACE/snapshots/profiles_latest.json "snapshots/profiles_${TIMESTAMP}.json"
           
-          # Summary
+          # Summary readme
           python3 -c "
           import json
           data = json.load(open('snapshots/profiles_latest.json'))
@@ -60,7 +54,7 @@ jobs:
           with open('README.md', 'w') as f:
               f.write('# PeopleDatabase Backups (auto-generated)\n\n')
               f.write(f'**Total Profiles**: {total}\n')
-              f.write(f'**Last Backup**: $TIMESTAMP\n\n')
+              f.write(f'**Last Backup**: ${TIMESTAMP}\n\n')
               f.write('| Name | Title | Company | Source |\n|------|-------|---------|--------|\n')
               for p in profiles[:30]:
                   name = p.get('fullName','').replace('|','-')
@@ -70,6 +64,6 @@ jobs:
                   f.write(f'| {name} | {title} | {company} | {src} |\n')
           "
           
-          git add .
-          git diff --cached --quiet || git commit -m "backup: ${TOTAL} profiles @ ${TIMESTAMP}"
-          git push origin backups || (git push --set-upstream origin backups)
+          git add -A
+          git commit -m "backup: ${TOTAL} profiles @ ${TIMESTAMP}" || echo "Nothing to commit"
+          git push origin backups --force
