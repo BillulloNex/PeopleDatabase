@@ -1,5 +1,6 @@
 import { dbPool, meili, PersonRecord, IngestionRunLog } from '../db/client';
 import { ExtractedPersonProfile, evaluateEntityMergeWithAI } from '../lib/openrouter';
+import { mirrorToMongoDB } from '../db/mongo-backup';
 import fs from 'fs';
 import path from 'path';
 
@@ -429,6 +430,9 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, 
       // Postgres offline
     }
 
+    // Backup mirror to MongoDB Atlas (fire-and-forget)
+    mirrorToMongoDB(updated).catch(() => {});
+
     return updated;
   } else {
     // Create new Canonical Entity
@@ -495,6 +499,9 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, 
     } catch (err) {
       // Postgres offline
     }
+
+    // Backup mirror to MongoDB Atlas (fire-and-forget)
+    mirrorToMongoDB(newPerson).catch(() => {});
 
     return newPerson;
   }
