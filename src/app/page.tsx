@@ -420,17 +420,6 @@ export default function PeopleExplorerPage() {
               </div>
             </div>
 
-            {/* AI Generated Outreach Hook */}
-            <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-slate-900 border border-indigo-500/20 space-y-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>GPT-5.6 Terra Outreach Hook</span>
-              </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                "Hi {selectedPerson.fullName.split(' ')[0]}, saw your impressive background at {selectedPerson.currentCompany || 'your company'} working on {selectedPerson.skills[0] || 'engineering'}. Would love to connect regarding continuous intelligence systems."
-              </p>
-            </div>
-
             {/* Digital Footprint Links */}
             <div className="space-y-2">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Platform Links & Identity Nodes</h4>
