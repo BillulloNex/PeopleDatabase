@@ -1,0 +1,131 @@
+import OpenAI from 'openai';
+
+// Initialize OpenAI client configured for OpenRouter
+export const openrouter = new OpenAI({
+  baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+  apiKey: process.env.OPENROUTER_API_KEY || 'sk-or-mock-key',
+  defaultHeaders: {
+    'HTTP-Referer': 'https://people.beenex.org',
+    'X-Title': 'PeopleDatabase Global Intelligence Engine',
+  },
+});
+
+export const OPENROUTER_MODELS = {
+  FAST_EXTRACTION: process.env.MODEL_FAST || 'openai/gpt-5.6-luna',
+  REASONING_RESOLVER: process.env.MODEL_REASONING || 'openai/gpt-5.6-terra',
+};
+
+export interface ExtractedPersonProfile {
+  fullName: string;
+  headline?: string;
+  bio?: string;
+  location?: string;
+  emails: string[];
+  phones?: string[];
+  company?: string;
+  title?: string;
+  skills: string[];
+  socialLinks: { platform: string; url: string; handle?: string }[];
+  languages?: string[];
+}
+
+/**
+ * Uses GPT-5.6 Luna via OpenRouter to extract clean structured Person profiles from unstructured text/HTML.
+ */
+export async function extractPersonProfileWithAI(rawText: string, sourceUrl: string): Promise<ExtractedPersonProfile> {
+  if (!process.env.OPENROUTER_API_KEY) {
+    console.warn('[OpenRouter] OPENROUTER_API_KEY missing. Falling back to heuristic extraction.');
+    return fallbackExtraction(rawText, sourceUrl);
+  }
+
+  try {
+    const prompt = `Extract all person details from the following web text/source (${sourceUrl}). Return JSON only matching the schema:
+{
+  "fullName": string,
+  "headline": string,
+  "bio": string,
+  "location": string,
+  "emails": string[],
+  "phones": string[],
+  "company": string,
+  "title": string,
+  "skills": string[],
+  "socialLinks": [{"platform": string, "url": string, "handle": string}]
+}
+
+Source Content:
+${rawText.slice(0, 10000)}`;
+
+    const response = await openrouter.chat.completions.create({
+      model: OPENROUTER_MODELS.FAST_EXTRACTION,
+      messages: [
+        { role: 'system', content: 'You are an expert AI entity extractor. Extract precise person profiles in valid JSON.' },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error('Empty AI response');
+    return JSON.parse(content) as ExtractedPersonProfile;
+  } catch (err) {
+    console.error('[OpenRouter] AI extraction failed, fallback triggered:', err);
+    return fallbackExtraction(rawText, sourceUrl);
+  }
+}
+
+/**
+ * Uses GPT-5.6 Terra via OpenRouter to resolve ambiguous profile duplicate candidates.
+ */
+export async function evaluateEntityMergeWithAI(
+  existingProfile: Record<string, any>,
+  newProfile: ExtractedPersonProfile
+): Promise<{ shouldMerge: boolean; confidenceScore: number; reason: string }> {
+  if (!process.env.OPENROUTER_API_KEY) {
+    return { shouldMerge: false, confidenceScore: 0.5, reason: 'No OpenRouter API key provided' };
+  }
+
+  try {
+    const prompt = `Compare these two profile records and determine if they belong to the SAME PHYSICAL INDIVIDUAL.
+Existing Entity: ${JSON.stringify(existingProfile)}
+New Discovered Profile: ${JSON.stringify(newProfile)}
+
+Respond with JSON:
+{
+  "shouldMerge": boolean,
+  "confidenceScore": number (0.0 to 1.0),
+  "reason": string
+}`;
+
+    const response = await openrouter.chat.completions.create({
+      model: OPENROUTER_MODELS.REASONING_RESOLVER,
+      messages: [
+        { role: 'system', content: 'You are a master identity resolution AI. Evaluate entity equivalence.' },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error('Empty resolution response');
+    return JSON.parse(content);
+  } catch (err) {
+    console.error('[OpenRouter] GPT-5.6 Terra entity resolution evaluation failed:', err);
+    return { shouldMerge: false, confidenceScore: 0, reason: 'AI reasoning error' };
+  }
+}
+
+function fallbackExtraction(text: string, sourceUrl: string): ExtractedPersonProfile {
+  const emails = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+  const uniqueEmails = Array.from(new Set(emails));
+  const urlParts = sourceUrl.split('/');
+  const possibleName = urlParts[urlParts.length - 1] || 'Discovered Person';
+
+  return {
+    fullName: possibleName.replace(/[-_]/g, ' '),
+    emails: uniqueEmails,
+    bio: text.slice(0, 300),
+    skills: [],
+    socialLinks: [{ platform: 'web', url: sourceUrl }]
+  };
+}

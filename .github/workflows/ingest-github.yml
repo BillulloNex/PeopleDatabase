@@ -1,0 +1,34 @@
+name: Scheduled GitHub Developer Ingestion
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Run daily at midnight
+  workflow_dispatch:
+    inputs:
+      username:
+        description: 'GitHub Username to Ingest'
+        required: false
+        default: 'torvalds'
+
+jobs:
+  github-ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run GitHub Profile Ingestion
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          npm run worker:github -- "${{ github.event.inputs.username || 'torvalds' }}"
