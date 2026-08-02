@@ -287,6 +287,28 @@ export async function getPersonById(id: string): Promise<PersonRecord | null> {
  */
 export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, sourceUrl?: string): Promise<PersonRecord> {
   const sanitized = sanitizeAndValidateProfile(extracted);
+  
+  // STRICT NAME GATE: Reject profiles without a real human name
+  const REJECT_NAMES = new Set([
+    'discovered entity', 'discovered profile', 'discovered person',
+    'unknown', 'n/a', 'na', 'none', 'null', 'undefined', 'anonymous',
+    'user', 'profile', 'person', 'entity', 'contact', 'member',
+  ]);
+  
+  const nameLower = (sanitized.fullName || '').toLowerCase().trim();
+  const isGarbageName = !nameLower 
+    || nameLower.length < 2
+    || REJECT_NAMES.has(nameLower)
+    || nameLower.startsWith('http')
+    || nameLower.startsWith('www.')
+    || nameLower.startsWith('profile found')
+    || !/[a-zA-Z]/.test(nameLower)  // Must contain at least one letter
+    || (nameLower.split(/\s+/).length < 2 && nameLower.length < 4); // Single short word is not a name
+
+  if (isGarbageName) {
+    throw new Error(`Rejected: "${sanitized.fullName}" is not a valid person name. Skipping ingestion.`);
+  }
+
   const existingList = Array.from(memoryStore.values());
   
   const newSourceObj = sourceUrl ? { url: sourceUrl, domain: extractDomain(sourceUrl), ingestedAt: new Date().toISOString() } : null;

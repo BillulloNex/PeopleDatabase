@@ -256,7 +256,7 @@ export async function runWebSpiderWorker(
     console.log(`[Web Spider] Found ${links.length} links on ${url}`);
 
     // If this page itself looks like a person profile page, ingest it
-    if (isPersonUrl(url) && text.length > 100) {
+    if (isPersonUrl(url) && text.length > 200) {
       discoveredProfiles.push({ rawText: text, sourceUrl: url });
     }
 
@@ -264,9 +264,9 @@ export async function runWebSpiderWorker(
     for (const link of links) {
       if (visited.has(link)) continue;
 
-      // If the link looks like a person profile, queue it for ingestion
+      // If the link looks like a person profile, queue it for actual fetching (not blind ingestion)
       if (isPersonUrl(link)) {
-        discoveredProfiles.push({ rawText: `Profile found at: ${link}`, sourceUrl: link });
+        queue.push({ url: link, depth: depth + 1 });
       }
 
       // If the link looks like a directory page and we haven't hit max depth, follow it
