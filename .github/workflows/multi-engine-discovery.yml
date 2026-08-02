@@ -1,0 +1,90 @@
+name: 🌐 Multi-Engine Discovery Crawler
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'  # Every 10 minutes, 24/7
+  workflow_dispatch:
+
+jobs:
+  # ============================================================
+  # ENGINE 1: GitHub API (FREE — no key needed, 60 req/hr)
+  # ============================================================
+  github-discovery:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        query_index: [0, 5, 10, 15, 20, 25, 30]  # 7 diverse query categories
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - name: 🔎 GitHub Discovery (Query ${{ matrix.query_index }})
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: npm run worker:github -- "${{ matrix.query_index }}" "10"
+
+  # ============================================================
+  # ENGINE 2: Wikidata SPARQL (FREE — zero keys, millions of people)
+  # ============================================================
+  wikidata-discovery:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        occupation_index: [0, 3, 6, 9, 12, 15, 18]  # 7 occupation categories
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - name: 📚 Wikidata Discovery (Occupation ${{ matrix.occupation_index }})
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: npm run worker:wikidata -- "${{ matrix.occupation_index }}" "20"
+
+  # ============================================================
+  # ENGINE 3: Web Spider (FREE — Google-style recursive crawler)
+  # ============================================================
+  web-spider:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        category_index: [0, 1, 2, 3, 4, 5, 6]  # 7 seed categories
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - name: 🕷️ Web Spider (Category ${{ matrix.category_index }})
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: npm run worker:spider -- "${{ matrix.category_index }}" "8"
+
+  # ============================================================
+  # ENGINE 4: Exa Neural Search (OPTIONAL ENHANCEMENT — uses API key)
+  # ============================================================
+  exa-enhancement:
+    runs-on: ubuntu-latest
+    if: ${{ vars.ENABLE_EXA != 'false' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        topic:
+          - 'founders of AI startups in SF'
+          - 'senior rust systems engineers'
+          - 'VP of marketing SaaS founders'
+          - 'cybersecurity security engineers'
+          - 'venture capital partner investors'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - name: ⚡ Exa Enhancement — "${{ matrix.topic }}"
+        env:
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: npm run worker:exa -- "${{ matrix.topic }}"
