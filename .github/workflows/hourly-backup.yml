@@ -1,61 +1,75 @@
-name: 💾 Hourly Backup to Private Repo
+name: 💾 Hourly Database Backup
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Every hour
+    - cron: '0 * * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
 
 jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: backups
+          fetch-depth: 1
+        continue-on-error: true
+
+      - name: 🔧 Initialize backups branch if needed
+        run: |
+          if [ ! -d ".git" ]; then
+            git init
+            git remote add origin https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
+            git checkout -b backups
+          fi
 
       - name: 📥 Export all profiles from production
         run: |
-          mkdir -p backup_data
+          mkdir -p snapshots
           
           curl -sf 'http://people.beenex.org/api/search?limit=50000' \
-            -o backup_data/profiles_latest.json
+            -o snapshots/profiles_latest.json || echo '{"total":0,"data":[]}' > snapshots/profiles_latest.json
           
-          TOTAL=$(python3 -c "import json; d=json.load(open('backup_data/profiles_latest.json')); print(d.get('total',0))")
-          echo "Exported $TOTAL profiles"
+          TOTAL=$(python3 -c "import json; d=json.load(open('snapshots/profiles_latest.json')); print(d.get('total',0))")
           echo "TOTAL=$TOTAL" >> $GITHUB_ENV
+          echo "Exported $TOTAL profiles"
 
-      - name: 📤 Push to private backup repo
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 📤 Commit backup
         run: |
-          TIMESTAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
-          
-          git clone https://x-access-token:${GH_TOKEN}@github.com/BillulloNex/PeopleDatabase-backups.git /tmp/backups
-          cd /tmp/backups
-          
           git config user.name "PeopleDB Backup Bot"
           git config user.email "backup@peopledatabase.beenex.org"
           
-          mkdir -p snapshots
-          cp $GITHUB_WORKSPACE/backup_data/profiles_latest.json snapshots/profiles_latest.json
-          cp $GITHUB_WORKSPACE/backup_data/profiles_latest.json "snapshots/profiles_${TIMESTAMP}.json"
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
           
-          # Keep only last 24 hourly snapshots to save space
-          ls -t snapshots/profiles_2*.json 2>/dev/null | tail -n +25 | xargs rm -f 2>/dev/null || true
+          # Keep a timestamped copy
+          cp snapshots/profiles_latest.json "snapshots/profiles_${TIMESTAMP}.json"
           
-          # Write summary
+          # Purge old snapshots (keep last 48)
+          ls -t snapshots/profiles_2*.json 2>/dev/null | tail -n +49 | xargs rm -f 2>/dev/null || true
+          
+          # Summary
           python3 -c "
           import json
           data = json.load(open('snapshots/profiles_latest.json'))
           total = data.get('total', 0)
           profiles = data.get('data', [])
           with open('README.md', 'w') as f:
-              f.write('# PeopleDatabase Backups\n\n')
+              f.write('# PeopleDatabase Backups (auto-generated)\n\n')
               f.write(f'**Total Profiles**: {total}\n')
-              f.write(f'**Last Backup**: ${TIMESTAMP}\n\n')
-              f.write('| Name | Title | Company |\n|------|-------|---------|\n')
+              f.write(f'**Last Backup**: $TIMESTAMP\n\n')
+              f.write('| Name | Title | Company | Source |\n|------|-------|---------|--------|\n')
               for p in profiles[:30]:
-                  f.write(f\"| {p.get('fullName','')} | {p.get('currentTitle','')} | {p.get('currentCompany','')} |\n\")
+                  name = p.get('fullName','').replace('|','-')
+                  title = p.get('currentTitle','').replace('|','-')
+                  company = p.get('currentCompany','').replace('|','-')
+                  src = (p.get('sources', [{}])[0] or {}).get('domain', '')
+                  f.write(f'| {name} | {title} | {company} | {src} |\n')
           "
           
           git add .
           git diff --cached --quiet || git commit -m "backup: ${TOTAL} profiles @ ${TIMESTAMP}"
-          git push origin main || git push origin master
+          git push origin backups || (git push --set-upstream origin backups)
