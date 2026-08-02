@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       profileToUpsert = await extractPersonProfileWithAI(rawText, sourceUrl || 'http://unknown-source.org');
     }
 
-    const person = await upsertExtractedProfile(profileToUpsert);
+    const person = await upsertExtractedProfile(profileToUpsert, sourceUrl);
     const durationMs = Date.now() - startTime;
 
     // Record Run Log

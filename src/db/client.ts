@@ -30,6 +30,7 @@ export interface PersonRecord {
   location?: string;
   skills: string[];
   socialLinks: { platform: string; url: string; handle?: string }[];
+  sources: { url: string; domain: string; ingestedAt?: string }[];
   avatarUrl?: string;
   matchConfidence: number;
   tags: string[];
@@ -74,6 +75,7 @@ export async function initDatabaseSchema(): Promise<void> {
         location TEXT,
         skills TEXT[] DEFAULT '{}',
         social_links JSONB DEFAULT '[]',
+        sources JSONB DEFAULT '[]',
         avatar_url TEXT,
         match_confidence DOUBLE PRECISION DEFAULT 1.0,
         tags TEXT[] DEFAULT '{}',

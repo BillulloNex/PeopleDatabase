@@ -47,7 +47,7 @@ export async function POST(request: Request) {
             }
 
             if (profileToUpsert) {
-              const person = await upsertExtractedProfile(profileToUpsert);
+              const person = await upsertExtractedProfile(profileToUpsert, item.sourceUrl);
               results.push(person);
             }
           } catch (err: any) {

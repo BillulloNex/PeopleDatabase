@@ -96,6 +96,15 @@ function isValidUrl(urlStr: string): boolean {
   }
 }
 
+function extractDomain(urlStr: string): string {
+  try {
+    const url = new URL(urlStr);
+    return url.hostname.replace(/^www\./, '');
+  } catch {
+    return 'web-source';
+  }
+}
+
 /**
  * Double & Triple Validation Filter: Sanitizes and strips unverified/invalid data fields.
  */
@@ -230,10 +239,12 @@ export async function getPersonById(id: string): Promise<PersonRecord | null> {
 /**
  * Upserts a newly extracted profile into the database with entity resolution.
  */
-export async function upsertExtractedProfile(extracted: ExtractedPersonProfile): Promise<PersonRecord> {
+export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, sourceUrl?: string): Promise<PersonRecord> {
   const sanitized = sanitizeAndValidateProfile(extracted);
   const existingList = Array.from(memoryStore.values());
   
+  const newSourceObj = sourceUrl ? { url: sourceUrl, domain: extractDomain(sourceUrl), ingestedAt: new Date().toISOString() } : null;
+
   // Rule 1: Check exact email match
   let match = existingList.find((p) =>
     p.emails.some((e) => sanitized.emails.map(x => x.toLowerCase()).includes(e.toLowerCase()))
@@ -264,6 +275,11 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile):
   const now = new Date().toISOString();
 
   if (match) {
+    const existingSources = match.sources || [];
+    const updatedSources = newSourceObj && !existingSources.some(s => s.url === newSourceObj.url)
+      ? [...existingSources, newSourceObj]
+      : existingSources;
+
     // Merge identity records
     const updated: PersonRecord = {
       ...match,
@@ -275,6 +291,7 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile):
       location: sanitized.location || match.location,
       skills: Array.from(new Set([...match.skills, ...sanitized.skills])),
       socialLinks: [...match.socialLinks, ...sanitized.socialLinks],
+      sources: updatedSources,
       updatedAt: now,
     };
 
@@ -286,8 +303,8 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile):
       try {
         await client.query(
           `UPDATE canonical_people 
-           SET headline = $1, bio = $2, emails = $3, current_company = $4, current_title = $5, location = $6, skills = $7, social_links = $8, updated_at = $9
-           WHERE id = $10`,
+           SET headline = $1, bio = $2, emails = $3, current_company = $4, current_title = $5, location = $6, skills = $7, social_links = $8, sources = $9, updated_at = $10
+           WHERE id = $11`,
           [
             updated.headline,
             updated.bio,
@@ -297,6 +314,7 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile):
             updated.location,
             updated.skills,
             JSON.stringify(updated.socialLinks),
+            JSON.stringify(updated.sources),
             updated.updatedAt,
             updated.id
           ]
@@ -311,6 +329,8 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile):
     return updated;
   } else {
     // Create new Canonical Entity
+    const initialSources = newSourceObj ? [newSourceObj] : [];
+
     const newPerson: PersonRecord = {
       id: crypto.randomUUID(),
       fullName: sanitized.fullName || 'Discovered Entity',
@@ -324,6 +344,7 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile):
       location: sanitized.location || '',
       skills: sanitized.skills,
       socialLinks: sanitized.socialLinks,
+      sources: initialSources,
       avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(sanitized.fullName || 'Person')}`,
       matchConfidence: 0.95,
       tags: ['Verified Discovered Entity'],
@@ -340,8 +361,8 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile):
       try {
         await client.query(
           `INSERT INTO canonical_people 
-            (id, full_name, headline, bio, primary_email, emails, phones, current_company, current_title, location, skills, social_links, avatar_url, match_confidence, tags, outreach_status, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+            (id, full_name, headline, bio, primary_email, emails, phones, current_company, current_title, location, skills, social_links, sources, avatar_url, match_confidence, tags, outreach_status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
           [
             newPerson.id,
             newPerson.fullName,
@@ -355,6 +376,7 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile):
             newPerson.location,
             newPerson.skills,
             JSON.stringify(newPerson.socialLinks),
+            JSON.stringify(newPerson.sources),
             newPerson.avatarUrl,
             newPerson.matchConfidence,
             newPerson.tags,
@@ -388,6 +410,7 @@ function rowToPersonRecord(row: any): PersonRecord {
     location: row.location,
     skills: row.skills || [],
     socialLinks: row.social_links || [],
+    sources: row.sources || [],
     avatarUrl: row.avatar_url,
     matchConfidence: row.match_confidence || 1.0,
     tags: row.tags || [],

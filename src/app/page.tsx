@@ -450,6 +450,39 @@ export default function PeopleExplorerPage() {
               </div>
             </div>
 
+            {/* Ingestion Data Sources Section */}
+            <div className="space-y-2 pt-2 border-t border-slate-800">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                Verified Data Sources ({selectedPerson.sources?.length || 0})
+              </h4>
+              {(!selectedPerson.sources || selectedPerson.sources.length === 0) ? (
+                <div className="text-xs text-slate-500 italic">No source URLs linked yet.</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {selectedPerson.sources.map((src, idx) => (
+                    <a
+                      key={idx}
+                      href={src.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-2.5 rounded-xl bg-[#0B0F17] border border-slate-800 hover:border-slate-700 flex items-center justify-between group transition-all"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold uppercase">
+                          {src.domain}
+                        </span>
+                        <span className="text-xs text-slate-300 group-hover:text-white truncate font-mono">
+                          {src.url}
+                        </span>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 flex-shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="pt-4 border-t border-slate-800 flex justify-end">
               <button
                 onClick={() => setSelectedPerson(null)}
