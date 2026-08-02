@@ -160,7 +160,9 @@ export async function searchCanonicalPeople(params: {
       sql += ' ORDER BY created_at DESC LIMIT 50';
       const res = await client.query(sql, values);
       if (res.rows.length > 0) {
-        return res.rows.map(rowToPersonRecord);
+        const records = res.rows.map(rowToPersonRecord);
+        records.forEach(r => memoryStore.set(r.id, r));
+        return records;
       }
     } finally {
       client.release();
@@ -277,6 +279,35 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile):
     };
 
     memoryStore.set(updated.id, updated);
+
+    // Persist to PostgreSQL database
+    try {
+      const client = await dbPool.connect();
+      try {
+        await client.query(
+          `UPDATE canonical_people 
+           SET headline = $1, bio = $2, emails = $3, current_company = $4, current_title = $5, location = $6, skills = $7, social_links = $8, updated_at = $9
+           WHERE id = $10`,
+          [
+            updated.headline,
+            updated.bio,
+            updated.emails,
+            updated.currentCompany,
+            updated.currentTitle,
+            updated.location,
+            updated.skills,
+            JSON.stringify(updated.socialLinks),
+            updated.updatedAt,
+            updated.id
+          ]
+        );
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      // Postgres offline
+    }
+
     return updated;
   } else {
     // Create new Canonical Entity
@@ -302,6 +333,43 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile):
     };
 
     memoryStore.set(newPerson.id, newPerson);
+
+    // Persist to PostgreSQL database
+    try {
+      const client = await dbPool.connect();
+      try {
+        await client.query(
+          `INSERT INTO canonical_people 
+            (id, full_name, headline, bio, primary_email, emails, phones, current_company, current_title, location, skills, social_links, avatar_url, match_confidence, tags, outreach_status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+          [
+            newPerson.id,
+            newPerson.fullName,
+            newPerson.headline,
+            newPerson.bio,
+            newPerson.primaryEmail,
+            newPerson.emails,
+            newPerson.phones,
+            newPerson.currentCompany,
+            newPerson.currentTitle,
+            newPerson.location,
+            newPerson.skills,
+            JSON.stringify(newPerson.socialLinks),
+            newPerson.avatarUrl,
+            newPerson.matchConfidence,
+            newPerson.tags,
+            newPerson.outreachStatus,
+            newPerson.createdAt,
+            newPerson.updatedAt
+          ]
+        );
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      // Postgres offline
+    }
+
     return newPerson;
   }
 }
