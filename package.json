@@ -13,6 +13,10 @@
     "worker:spider": "tsx src/crawler/web-spider.ts",
     "worker:arxiv": "tsx src/crawler/arxiv-worker.ts",
     "worker:orcid": "tsx src/crawler/orcid-worker.ts",
+    "worker:npi": "tsx src/crawler/npi-worker.ts",
+    "worker:openalex": "tsx src/crawler/openalex-worker.ts",
+    "worker:s2": "tsx src/crawler/semantic-scholar-worker.ts",
+    "worker:pubmed": "tsx src/crawler/pubmed-worker.ts",
     "worker:resolver": "tsx src/resolver/resolver-worker.ts"
   },
   "dependencies": {
