@@ -1,7 +1,55 @@
 import { dbPool, meili, PersonRecord, IngestionRunLog } from '../db/client';
 import { ExtractedPersonProfile, evaluateEntityMergeWithAI } from '../lib/openrouter';
+import fs from 'fs';
+import path from 'path';
 
-const runLogsStore: IngestionRunLog[] = [];
+const STORAGE_FILE = path.join(process.cwd(), 'people_db_store.json');
+const RUN_LOGS_FILE = path.join(process.cwd(), 'run_logs_store.json');
+
+// Memory & Disk Fallback Store
+const memoryStore: Map<string, PersonRecord> = new Map();
+let runLogsStore: IngestionRunLog[] = [];
+
+function loadStoreFromDisk() {
+  try {
+    if (fs.existsSync(STORAGE_FILE)) {
+      const raw = fs.readFileSync(STORAGE_FILE, 'utf-8');
+      const parsed: PersonRecord[] = JSON.parse(raw);
+      parsed.forEach(p => memoryStore.set(p.id, p));
+      console.log(`[Store] Loaded ${memoryStore.size} persistent records from disk.`);
+    }
+  } catch (err) {
+    console.warn('[Store] Failed to load store from disk:', err);
+  }
+
+  try {
+    if (fs.existsSync(RUN_LOGS_FILE)) {
+      const raw = fs.readFileSync(RUN_LOGS_FILE, 'utf-8');
+      runLogsStore = JSON.parse(raw);
+      console.log(`[Store] Loaded ${runLogsStore.length} run logs from disk.`);
+    }
+  } catch (err) {
+    console.warn('[Store] Failed to load run logs from disk:', err);
+  }
+}
+
+function saveStoreToDisk() {
+  try {
+    const array = Array.from(memoryStore.values());
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify(array, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('[Store] Failed to save store to disk:', err);
+  }
+
+  try {
+    fs.writeFileSync(RUN_LOGS_FILE, JSON.stringify(runLogsStore.slice(0, 100), null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('[Store] Failed to save run logs to disk:', err);
+  }
+}
+
+// Initial load on server startup
+loadStoreFromDisk();
 
 /**
  * Logs an ingestion run (whether GHA matrix, Exa search, GitHub worker, or webhook).
@@ -14,7 +62,8 @@ export async function logIngestionRun(logData: Omit<IngestionRunLog, 'id' | 'tim
   };
 
   runLogsStore.unshift(logRecord);
-  if (runLogsStore.length > 100) runLogsStore.pop(); // Keep 100 most recent run logs in RAM
+  if (runLogsStore.length > 100) runLogsStore.pop(); // Keep 100 most recent run logs
+  saveStoreToDisk();
 
   try {
     const client = await dbPool.connect();
@@ -40,7 +89,7 @@ export async function logIngestionRun(logData: Omit<IngestionRunLog, 'id' | 'tim
       client.release();
     }
   } catch (err) {
-    // DB offline -> fallback to runLogsStore memory
+    // DB offline -> saved to disk via saveStoreToDisk()
   }
 
   return logRecord;
@@ -77,9 +126,6 @@ export async function getRecentIngestionRuns(): Promise<IngestionRunLog[]> {
 
   return runLogsStore;
 }
-
-// In-memory fallback store for zero-config local testing and development
-const memoryStore: Map<string, PersonRecord> = new Map();
 
 // Strict Email & URL Validator to guarantee 100% authentic data
 function isValidEmail(email: string): boolean {
@@ -296,6 +342,7 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, 
     };
 
     memoryStore.set(updated.id, updated);
+    saveStoreToDisk();
 
     // Persist to PostgreSQL database
     try {
@@ -354,6 +401,7 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, 
     };
 
     memoryStore.set(newPerson.id, newPerson);
+    saveStoreToDisk();
 
     // Persist to PostgreSQL database
     try {
