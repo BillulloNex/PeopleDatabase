@@ -153,7 +153,27 @@ export async function runWikidataDiscoveryWorker(occupationIndex?: number, batch
   if (people.length === 0) return [];
 
   const items = people.map(person => ({
-    rawText: buildRawTextFromWikidata(person),
+    preParsedProfile: {
+      fullName: person.name,
+      headline: person.description || person.occupation || '',
+      bio: [
+        person.description,
+        person.occupation ? `Occupation: ${person.occupation}` : '',
+        person.nationality ? `Nationality: ${person.nationality}` : '',
+        person.birthDate ? `Born: ${person.birthDate}` : '',
+      ].filter(Boolean).join('. '),
+      location: person.nationality || '',
+      emails: [],
+      phones: [],
+      company: '',
+      title: person.occupation || '',
+      skills: [person.occupation].filter(Boolean),
+      socialLinks: [
+        person.wikipediaUrl ? { platform: 'Wikipedia', url: person.wikipediaUrl, handle: '' } : null,
+        person.website ? { platform: 'Website', url: person.website, handle: '' } : null,
+        { platform: 'Wikidata', url: `https://www.wikidata.org/wiki/${person.wikidataId}`, handle: person.wikidataId }
+      ].filter(Boolean)
+    },
     sourceUrl: person.wikipediaUrl || `https://www.wikidata.org/wiki/${person.wikidataId}`
   }));
 

@@ -2,57 +2,94 @@ name: 🌐 Multi-Engine Discovery Crawler
 
 on:
   schedule:
-    - cron: '*/10 * * * *'  # Every 10 minutes, 24/7
+    - cron: '*/12 * * * *'  # Every 12 minutes, 24/7 (5 runs/hr)
   workflow_dispatch:
 
 jobs:
   # ============================================================
-  # ENGINE 1: GitHub API (FREE — no key needed, 60 req/hr)
+  # ENGINE 1: GitHub API (FREE — no key needed)
+  # Discovers developers by location, language, bio keywords
   # ============================================================
   github-discovery:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        query_index: [0, 5, 10, 15, 20, 25, 30]  # 7 diverse query categories
+        query_index: [0, 5, 10, 15, 20, 25, 30]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
-      - name: 🔎 GitHub Discovery (Query ${{ matrix.query_index }})
+      - name: 🐙 GitHub Discovery (Query ${{ matrix.query_index }})
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: npm run worker:github -- "${{ matrix.query_index }}" "10"
 
   # ============================================================
-  # ENGINE 2: Wikidata SPARQL (FREE — zero keys, millions of people)
+  # ENGINE 2: Wikidata SPARQL (FREE — millions of notable people)
+  # Pre-parsed = zero LLM cost
   # ============================================================
   wikidata-discovery:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        occupation_index: [0, 3, 6, 9, 12, 15, 18]  # 7 occupation categories
+        occupation_index: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - name: 📚 Wikidata Discovery (Occupation ${{ matrix.occupation_index }})
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: npm run worker:wikidata -- "${{ matrix.occupation_index }}" "20"
+        run: npm run worker:wikidata -- "${{ matrix.occupation_index }}" "25"
 
   # ============================================================
-  # ENGINE 3: Web Spider (FREE — Google-style recursive crawler)
+  # ENGINE 3: arXiv (FREE — 2.4M+ research papers)
+  # Pre-parsed = zero LLM cost
+  # ============================================================
+  arxiv-discovery:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        category_index: [0, 2, 4, 6, 8, 10, 12, 14, 16]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - name: 📄 arXiv Discovery (Category ${{ matrix.category_index }})
+        run: npm run worker:arxiv -- "${{ matrix.category_index }}" "30"
+
+  # ============================================================
+  # ENGINE 4: ORCID (FREE — 20M+ verified researchers)
+  # Pre-parsed = zero LLM cost
+  # ============================================================
+  orcid-discovery:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        query_index: [0, 5, 10, 15, 20, 25]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - name: 🔬 ORCID Discovery (Keyword ${{ matrix.query_index }})
+        run: npm run worker:orcid -- "${{ matrix.query_index }}" "15"
+
+  # ============================================================
+  # ENGINE 5: Web Spider (FREE — Google-style recursive crawler)
+  # Crawls team pages, directories, portfolios
   # ============================================================
   web-spider:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        category_index: [0, 1, 2, 3, 4, 5, 6]  # 7 seed categories
+        category_index: [0, 1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -64,7 +101,8 @@ jobs:
         run: npm run worker:spider -- "${{ matrix.category_index }}" "8"
 
   # ============================================================
-  # ENGINE 4: Exa Neural Search (OPTIONAL ENHANCEMENT — uses API key)
+  # ENGINE 6: Exa Neural Search (OPTIONAL — uses paid API key)
+  # Only runs if EXA_API_KEY secret exists
   # ============================================================
   exa-enhancement:
     runs-on: ubuntu-latest
@@ -78,6 +116,11 @@ jobs:
           - 'VP of marketing SaaS founders'
           - 'cybersecurity security engineers'
           - 'venture capital partner investors'
+          - 'biotech startup CEOs'
+          - 'fintech engineering leaders'
+          - 'open source maintainers golang'
+          - 'climate tech founders'
+          - 'healthcare technology executives'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

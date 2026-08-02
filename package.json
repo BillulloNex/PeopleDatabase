@@ -11,6 +11,8 @@
     "worker:github": "tsx src/crawler/github-worker.ts",
     "worker:wikidata": "tsx src/crawler/wikidata-worker.ts",
     "worker:spider": "tsx src/crawler/web-spider.ts",
+    "worker:arxiv": "tsx src/crawler/arxiv-worker.ts",
+    "worker:orcid": "tsx src/crawler/orcid-worker.ts",
     "worker:resolver": "tsx src/resolver/resolver-worker.ts"
   },
   "dependencies": {
