@@ -51,6 +51,40 @@ function saveStoreToDisk() {
 // Initial load on server startup
 loadStoreFromDisk();
 
+// Auto-purge garbage profiles on startup
+function purgeGarbageProfiles() {
+  const REJECT_NAMES = new Set([
+    'discovered entity', 'discovered profile', 'discovered person',
+    'unknown', 'n/a', 'na', 'none', 'null', 'undefined', 'anonymous',
+    'user', 'profile', 'person', 'entity', 'contact', 'member',
+  ]);
+
+  let purged = 0;
+  for (const [id, person] of memoryStore.entries()) {
+    const nameLower = (person.fullName || '').toLowerCase().trim();
+    const isGarbage = !nameLower
+      || nameLower.length < 2
+      || REJECT_NAMES.has(nameLower)
+      || nameLower.startsWith('http')
+      || nameLower.startsWith('www.')
+      || nameLower.startsWith('profile found')
+      || !/[a-zA-Z]/.test(nameLower)
+      || (nameLower.split(/\s+/).length < 2 && nameLower.length < 4);
+
+    if (isGarbage) {
+      memoryStore.delete(id);
+      purged++;
+    }
+  }
+
+  if (purged > 0) {
+    console.log(`[Store] Purged ${purged} garbage profiles on startup. ${memoryStore.size} clean records remain.`);
+    saveStoreToDisk();
+  }
+}
+
+purgeGarbageProfiles();
+
 /**
  * Logs an ingestion run (whether GHA matrix, Exa search, GitHub worker, or webhook).
  */
