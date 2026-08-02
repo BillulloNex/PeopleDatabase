@@ -59,7 +59,13 @@ export async function initDatabaseSchema(): Promise<void> {
   const client = await dbPool.connect();
   try {
     await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
-    await client.query(`CREATE EXTENSION IF NOT EXISTS "vector";`);
+    
+    // pgvector is optional — only install if available
+    try {
+      await client.query(`CREATE EXTENSION IF NOT EXISTS "vector";`);
+    } catch {
+      console.log('[Database] pgvector extension not available, skipping embedding support.');
+    }
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS canonical_people (
@@ -80,7 +86,6 @@ export async function initDatabaseSchema(): Promise<void> {
         match_confidence DOUBLE PRECISION DEFAULT 1.0,
         tags TEXT[] DEFAULT '{}',
         outreach_status TEXT DEFAULT 'uncontacted',
-        embedding vector(1536),
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
