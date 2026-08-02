@@ -1,0 +1,61 @@
+name: 💾 Hourly Backup to Private Repo
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Every hour
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 📥 Export all profiles from production
+        run: |
+          mkdir -p backup_data
+          
+          curl -sf 'http://people.beenex.org/api/search?limit=50000' \
+            -o backup_data/profiles_latest.json
+          
+          TOTAL=$(python3 -c "import json; d=json.load(open('backup_data/profiles_latest.json')); print(d.get('total',0))")
+          echo "Exported $TOTAL profiles"
+          echo "TOTAL=$TOTAL" >> $GITHUB_ENV
+
+      - name: 📤 Push to private backup repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+          
+          git clone https://x-access-token:${GH_TOKEN}@github.com/BillulloNex/PeopleDatabase-backups.git /tmp/backups
+          cd /tmp/backups
+          
+          git config user.name "PeopleDB Backup Bot"
+          git config user.email "backup@peopledatabase.beenex.org"
+          
+          mkdir -p snapshots
+          cp $GITHUB_WORKSPACE/backup_data/profiles_latest.json snapshots/profiles_latest.json
+          cp $GITHUB_WORKSPACE/backup_data/profiles_latest.json "snapshots/profiles_${TIMESTAMP}.json"
+          
+          # Keep only last 24 hourly snapshots to save space
+          ls -t snapshots/profiles_2*.json 2>/dev/null | tail -n +25 | xargs rm -f 2>/dev/null || true
+          
+          # Write summary
+          python3 -c "
+          import json
+          data = json.load(open('snapshots/profiles_latest.json'))
+          total = data.get('total', 0)
+          profiles = data.get('data', [])
+          with open('README.md', 'w') as f:
+              f.write('# PeopleDatabase Backups\n\n')
+              f.write(f'**Total Profiles**: {total}\n')
+              f.write(f'**Last Backup**: ${TIMESTAMP}\n\n')
+              f.write('| Name | Title | Company |\n|------|-------|---------|\n')
+              for p in profiles[:30]:
+                  f.write(f\"| {p.get('fullName','')} | {p.get('currentTitle','')} | {p.get('currentCompany','')} |\n\")
+          "
+          
+          git add .
+          git diff --cached --quiet || git commit -m "backup: ${TOTAL} profiles @ ${TIMESTAMP}"
+          git push origin main || git push origin master
