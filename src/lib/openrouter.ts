@@ -63,14 +63,31 @@ Return JSON matching the schema:
 Source Content:
 ${rawText.slice(0, 10000)}`;
 
-    const response = await openrouter.chat.completions.create({
-      model: OPENROUTER_MODELS.FAST_EXTRACTION,
-      messages: [
-        { role: 'system', content: 'You are an expert AI entity extractor. Extract precise person profiles in valid JSON. Never hallucinate URLs.' },
-        { role: 'user', content: prompt }
-      ],
-      response_format: { type: 'json_object' }
-    });
+    let attempts = 0;
+    let response: any;
+
+    while (attempts < 4) {
+      try {
+        attempts++;
+        response = await openrouter.chat.completions.create({
+          model: OPENROUTER_MODELS.FAST_EXTRACTION,
+          messages: [
+            { role: 'system', content: 'You are an expert AI entity extractor. Extract precise person profiles in valid JSON. Never hallucinate URLs.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        });
+        break;
+      } catch (err: any) {
+        if (err?.status === 429 || err?.message?.includes('429') || err?.message?.includes('rate limit')) {
+          const waitTime = Math.pow(2, attempts) * 1000;
+          console.warn(`[OpenRouter] Rate limited (429). Retrying in ${waitTime}ms (Attempt ${attempts}/4)...`);
+          await new Promise(res => setTimeout(res, waitTime));
+        } else {
+          throw err;
+        }
+      }
+    }
 
     const content = response.choices[0]?.message?.content;
     if (!content) throw new Error('Empty AI response');
