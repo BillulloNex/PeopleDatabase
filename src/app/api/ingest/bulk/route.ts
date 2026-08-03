@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { extractPersonProfileWithAI } from '@/lib/openrouter';
 import { upsertExtractedProfile, logIngestionRun } from '@/resolver/matcher';
 import { PersonRecord } from '@/db/client';
+import { checkOpenRouterHealth } from '@/lib/openrouter-health';
 
 export async function POST(request: Request) {
   const startTime = Date.now();
@@ -24,6 +25,17 @@ export async function POST(request: Request) {
         { success: false, error: 'Payload must contain a non-empty "items" array' },
         { status: 400 }
       );
+    }
+
+    // 🛡️ CIRCUIT BREAKER: Verify AI is available before processing batch
+    const health = await checkOpenRouterHealth();
+    if (!health.healthy) {
+      console.error(`[Bulk Ingest] ❌ ABORTING: ${health.error}`);
+      return NextResponse.json({
+        success: false,
+        error: `AI service unavailable: ${health.error}. Batch of ${items.length} items NOT processed to prevent data degradation.`,
+        abortedCount: items.length,
+      }, { status: 503 });
     }
 
     console.log(`[Bulk Ingest] Starting ingestion for batch of ${items.length} records...`);

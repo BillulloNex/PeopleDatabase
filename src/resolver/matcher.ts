@@ -11,13 +11,53 @@ const RUN_LOGS_FILE = path.join(process.cwd(), 'run_logs_store.json');
 const memoryStore: Map<string, PersonRecord> = new Map();
 let runLogsStore: IngestionRunLog[] = [];
 
+// === DEDUP CACHE: Avoid re-comparing the same pairs ===
+const dedupCache = new Map<string, { shouldMerge: boolean; confidenceScore: number; timestamp: number }>();
+const DEDUP_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function getDedupCacheKey(existingId: string, newName: string): string {
+  return `${existingId}::${newName.toLowerCase().trim()}`;
+}
+
+// === BLOCKING INDEX: Fast candidate narrowing by name tokens ===
+const nameBlockingIndex = new Map<string, Set<string>>();
+
+function addToBlockingIndex(person: PersonRecord) {
+  const tokens = person.fullName.toLowerCase().trim().split(/\s+/).filter(t => t.length > 1);
+  for (const token of tokens) {
+    if (!nameBlockingIndex.has(token)) {
+      nameBlockingIndex.set(token, new Set());
+    }
+    nameBlockingIndex.get(token)!.add(person.id);
+  }
+}
+
+function getCandidatesFromBlockingIndex(name: string): PersonRecord[] {
+  const tokens = name.toLowerCase().trim().split(/\s+/).filter(t => t.length > 1);
+  const candidateIds = new Set<string>();
+
+  for (const token of tokens) {
+    const ids = nameBlockingIndex.get(token);
+    if (ids) {
+      for (const id of ids) candidateIds.add(id);
+    }
+  }
+
+  return Array.from(candidateIds)
+    .map(id => memoryStore.get(id))
+    .filter((p): p is PersonRecord => !!p);
+}
+
 function loadStoreFromDisk() {
   try {
     if (fs.existsSync(STORAGE_FILE)) {
       const raw = fs.readFileSync(STORAGE_FILE, 'utf-8');
       const parsed: PersonRecord[] = JSON.parse(raw);
-      parsed.forEach(p => memoryStore.set(p.id, p));
-      console.log(`[Store] Loaded ${memoryStore.size} persistent records from disk.`);
+      parsed.forEach(p => {
+        memoryStore.set(p.id, p);
+        addToBlockingIndex(p);
+      });
+      console.log(`[Store] Loaded ${memoryStore.size} persistent records from disk. Blocking index: ${nameBlockingIndex.size} tokens.`);
     }
   } catch (err) {
     console.warn('[Store] Failed to load store from disk:', err);
@@ -187,6 +227,24 @@ function extractDomain(urlStr: string): string {
 }
 
 /**
+ * Computes Jaccard similarity between two name strings (token-level).
+ * Returns 0.0–1.0. Higher = more similar.
+ */
+function nameTokenSimilarity(nameA: string, nameB: string): number {
+  const tokensA = new Set(nameA.toLowerCase().trim().split(/\s+/).filter(t => t.length > 1));
+  const tokensB = new Set(nameB.toLowerCase().trim().split(/\s+/).filter(t => t.length > 1));
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+
+  let intersection = 0;
+  for (const t of tokensA) {
+    if (tokensB.has(t)) intersection++;
+  }
+
+  const union = new Set([...tokensA, ...tokensB]).size;
+  return intersection / union;
+}
+
+/**
  * Double & Triple Validation Filter: Sanitizes and strips unverified/invalid data fields.
  */
 export function sanitizeAndValidateProfile(profile: ExtractedPersonProfile): ExtractedPersonProfile {
@@ -348,10 +406,14 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, 
   
   const newSourceObj = sourceUrl ? { url: sourceUrl, domain: extractDomain(sourceUrl), ingestedAt: new Date().toISOString() } : null;
 
+  // Track how dedup was resolved
+  let dedupMethod: PersonRecord['dedupMethod'] = 'no-match-new';
+
   // Rule 1: Check exact email match
   let match = existingList.find((p) =>
     p.emails.some((e) => sanitized.emails.map(x => x.toLowerCase()).includes(e.toLowerCase()))
   );
+  if (match) dedupMethod = 'email-match';
 
   // Rule 2: If no email match, check full name + company match
   if (!match && sanitized.fullName && sanitized.company) {
@@ -360,17 +422,39 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, 
         p.fullName.toLowerCase() === sanitized.fullName.toLowerCase() &&
         p.currentCompany?.toLowerCase() === sanitized.company?.toLowerCase()
     );
+    if (match) dedupMethod = 'name-company-match';
   }
 
-  // Rule 3: Use GPT-5.6 Terra AI reasoning if ambiguous
+  // Rule 3: AI reasoning for ambiguous matches — with blocking index + similarity pre-filter + cache
   if (!match && sanitized.fullName && existingList.length > 0) {
-    const candidate = existingList.find(
-      (p) => p.fullName.toLowerCase().includes(sanitized.fullName.toLowerCase())
-    );
-    if (candidate) {
-      const aiResult = await evaluateEntityMergeWithAI(candidate, sanitized);
-      if (aiResult.shouldMerge && aiResult.confidenceScore > 0.75) {
-        match = candidate;
+    // Use blocking index for fast candidate narrowing instead of full scan
+    const blockCandidates = getCandidatesFromBlockingIndex(sanitized.fullName);
+
+    // Apply Jaccard similarity filter (threshold > 0.4)
+    const candidates = blockCandidates
+      .map(p => ({ person: p, similarity: nameTokenSimilarity(p.fullName, sanitized.fullName) }))
+      .filter(c => c.similarity > 0.4)
+      .sort((a, b) => b.similarity - a.similarity);
+
+    if (candidates.length > 0) {
+      const topCandidate = candidates[0].person;
+      const cacheKey = getDedupCacheKey(topCandidate.id, sanitized.fullName);
+      const cached = dedupCache.get(cacheKey);
+
+      if (cached && (Date.now() - cached.timestamp) < DEDUP_CACHE_TTL_MS) {
+        // Cache hit — skip AI call
+        if (cached.shouldMerge && cached.confidenceScore > 0.75) {
+          match = topCandidate;
+          dedupMethod = 'ai-resolved';
+        }
+      } else {
+        // Cache miss — call AI
+        const aiResult = await evaluateEntityMergeWithAI(topCandidate, sanitized);
+        dedupCache.set(cacheKey, { ...aiResult, timestamp: Date.now() });
+        if (aiResult.shouldMerge && aiResult.confidenceScore > 0.75) {
+          match = topCandidate;
+          dedupMethod = 'ai-resolved';
+        }
       }
     }
   }
@@ -456,11 +540,14 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, 
       matchConfidence: 0.95,
       tags: ['Verified Discovered Entity'],
       outreachStatus: 'uncontacted',
+      extractionMethod: (extracted as any)._extractionMethod || 'ai-luna',
+      dedupMethod,
       createdAt: now,
       updatedAt: now,
     };
 
     memoryStore.set(newPerson.id, newPerson);
+    addToBlockingIndex(newPerson);
     saveStoreToDisk();
 
     // Persist to PostgreSQL database
@@ -469,8 +556,8 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, 
       try {
         await client.query(
           `INSERT INTO canonical_people 
-            (id, full_name, headline, bio, primary_email, emails, phones, current_company, current_title, location, skills, social_links, sources, avatar_url, match_confidence, tags, outreach_status, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+            (id, full_name, headline, bio, primary_email, emails, phones, current_company, current_title, location, skills, social_links, sources, avatar_url, match_confidence, tags, outreach_status, extraction_method, dedup_method, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
           [
             newPerson.id,
             newPerson.fullName,
@@ -489,6 +576,8 @@ export async function upsertExtractedProfile(extracted: ExtractedPersonProfile, 
             newPerson.matchConfidence,
             newPerson.tags,
             newPerson.outreachStatus,
+            newPerson.extractionMethod,
+            newPerson.dedupMethod,
             newPerson.createdAt,
             newPerson.updatedAt
           ]
@@ -526,6 +615,8 @@ function rowToPersonRecord(row: any): PersonRecord {
     matchConfidence: row.match_confidence || 1.0,
     tags: row.tags || [],
     outreachStatus: row.outreach_status || 'uncontacted',
+    extractionMethod: row.extraction_method || undefined,
+    dedupMethod: row.dedup_method || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

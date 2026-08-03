@@ -12,7 +12,7 @@ export const openrouter = new OpenAI({
 
 export const OPENROUTER_MODELS = {
   FAST_EXTRACTION: process.env.MODEL_FAST || 'openai/gpt-5.6-luna',
-  REASONING_RESOLVER: process.env.MODEL_REASONING || 'openai/gpt-5.6-terra',
+  REASONING_RESOLVER: process.env.MODEL_REASONING || 'openai/gpt-5.6-luna',
 };
 
 export interface ExtractedPersonProfile {
@@ -91,8 +91,15 @@ ${rawText.slice(0, 10000)}`;
 
     const content = response.choices[0]?.message?.content;
     if (!content) throw new Error('Empty AI response');
-    return JSON.parse(content) as ExtractedPersonProfile;
+    const result = JSON.parse(content) as ExtractedPersonProfile;
+    (result as any)._extractionMethod = 'ai-luna';
+    return result;
   } catch (err) {
+    const status = (err as any)?.status;
+    // Only fall back for transient errors, NOT for payment/auth failures
+    if (status === 402 || status === 401) {
+      throw new Error(`[OpenRouter] FATAL: API returned ${status}. Aborting to prevent garbage ingestion.`);
+    }
     console.error('[OpenRouter] AI extraction failed, fallback triggered:', err);
     return fallbackExtraction(rawText, sourceUrl);
   }
@@ -134,7 +141,7 @@ Respond with JSON:
     if (!content) throw new Error('Empty resolution response');
     return JSON.parse(content);
   } catch (err) {
-    console.error('[OpenRouter] GPT-5.6 Terra entity resolution evaluation failed:', err);
+    console.error('[OpenRouter] Entity resolution evaluation failed:', err);
     return { shouldMerge: false, confidenceScore: 0, reason: 'AI reasoning error' };
   }
 }
@@ -150,6 +157,56 @@ function fallbackExtraction(text: string, sourceUrl: string): ExtractedPersonPro
     emails: uniqueEmails,
     bio: text.slice(0, 300),
     skills: [],
-    socialLinks: [{ platform: 'web', url: sourceUrl }]
-  };
+    socialLinks: [{ platform: 'web', url: sourceUrl }],
+    _extractionMethod: 'heuristic-fallback',
+  } as ExtractedPersonProfile & { _extractionMethod: string };
+}
+
+/**
+ * Evaluates multiple candidates against a new profile in a single LLM call.
+ * Returns the best match (if any) with confidence > threshold.
+ */
+export async function evaluateBatchEntityMerge(
+  candidates: Record<string, any>[],
+  newProfile: ExtractedPersonProfile
+): Promise<{ matchIndex: number; shouldMerge: boolean; confidenceScore: number; reason: string }> {
+  if (!process.env.OPENROUTER_API_KEY || candidates.length === 0) {
+    return { matchIndex: -1, shouldMerge: false, confidenceScore: 0, reason: 'No candidates' };
+  }
+
+  const candidateList = candidates
+    .map((c, i) => `Candidate ${i}: ${JSON.stringify({ fullName: c.fullName, company: c.currentCompany, title: c.currentTitle, emails: c.emails, location: c.location })}`)
+    .join('\n');
+
+  const prompt = `Compare this new profile against ${candidates.length} existing candidates. Determine which (if any) is the SAME PHYSICAL INDIVIDUAL.
+
+New Profile: ${JSON.stringify({ fullName: newProfile.fullName, company: newProfile.company, title: newProfile.title, emails: newProfile.emails, location: newProfile.location })}
+
+${candidateList}
+
+Respond with JSON:
+{
+  "matchIndex": number (-1 if no match),
+  "shouldMerge": boolean,
+  "confidenceScore": number (0.0 to 1.0),
+  "reason": string
+}`;
+
+  try {
+    const response = await openrouter.chat.completions.create({
+      model: OPENROUTER_MODELS.REASONING_RESOLVER,
+      messages: [
+        { role: 'system', content: 'You are a master identity resolution AI. Find the matching candidate or report no match.' },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error('Empty batch resolution response');
+    return JSON.parse(content);
+  } catch (err) {
+    console.error('[OpenRouter] Batch entity resolution failed:', err);
+    return { matchIndex: -1, shouldMerge: false, confidenceScore: 0, reason: 'AI batch error' };
+  }
 }

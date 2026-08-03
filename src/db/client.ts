@@ -35,6 +35,8 @@ export interface PersonRecord {
   matchConfidence: number;
   tags: string[];
   outreachStatus: 'uncontacted' | 'in_sequence' | 'replied' | 'do_not_contact';
+  extractionMethod?: 'ai-luna' | 'ai-terra' | 'heuristic-fallback' | 'pre-parsed';
+  dedupMethod?: 'email-match' | 'name-company-match' | 'ai-resolved' | 'no-match-new';
   createdAt: string;
   updatedAt: string;
 }
@@ -86,6 +88,8 @@ export async function initDatabaseSchema(): Promise<void> {
         match_confidence DOUBLE PRECISION DEFAULT 1.0,
         tags TEXT[] DEFAULT '{}',
         outreach_status TEXT DEFAULT 'uncontacted',
+        extraction_method TEXT,
+        dedup_method TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );

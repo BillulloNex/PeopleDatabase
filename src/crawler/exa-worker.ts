@@ -1,8 +1,17 @@
 import { searchPeopleWithExa } from '../lib/exa';
 import { extractPersonProfileWithAI } from '../lib/openrouter';
 import { upsertExtractedProfile } from '../resolver/matcher';
+import { checkOpenRouterHealth } from '../lib/openrouter-health';
 
 export async function runExaDiscoveryWorker(query: string = 'founders of AI startups', count: number = 5) {
+  // 🛡️ CIRCUIT BREAKER: Verify AI is available before crawling
+  const health = await checkOpenRouterHealth();
+  if (!health.healthy) {
+    console.error(`[Exa Worker] ❌ ABORTING CRAWL: ${health.error}`);
+    console.error(`[Exa Worker] Skipping "${query}" to prevent garbage data ingestion.`);
+    return [];
+  }
+
   console.log(`[Exa Worker] Starting neural search for query: "${query}"...`);
   const exaResults = await searchPeopleWithExa(query, count);
 
