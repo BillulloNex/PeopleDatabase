@@ -8,18 +8,23 @@ export async function GET(request: Request) {
   const location = searchParams.get('location') || undefined;
   const skill = searchParams.get('skill') || undefined;
   const status = searchParams.get('status') || undefined;
-  const limit = parseInt(searchParams.get('limit') || '50', 10);
+  const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10) || 50, 500);
+  const page = Math.max(parseInt(searchParams.get('page') || '1', 10) || 1, 1);
+  const offset = (page - 1) * limit;
 
   try {
-    const [people, totalCount] = await Promise.all([
-      searchCanonicalPeople({ query, company, location, skill, status, limit: Math.min(limit, 50000) }),
+    const [{ records, matchingCount }, totalCount] = await Promise.all([
+      searchCanonicalPeople({ query, company, location, skill, status, limit, offset }),
       getTotalProfileCount(),
     ]);
     return NextResponse.json({
       success: true,
       total: totalCount,
-      returned: people.length,
-      data: people
+      matching: matchingCount,
+      page,
+      pageSize: limit,
+      returned: records.length,
+      data: records
     });
   } catch (err: any) {
     return NextResponse.json(

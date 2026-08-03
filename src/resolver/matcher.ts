@@ -307,43 +307,58 @@ export async function searchCanonicalPeople(params: {
   location?: string;
   status?: string;
   limit?: number;
-}): Promise<PersonRecord[]> {
+  offset?: number;
+}): Promise<{ records: PersonRecord[]; matchingCount: number }> {
+  const limit = Math.max(1, Math.floor(params.limit || 50));
+  const offset = Math.max(0, Math.floor(params.offset || 0));
+
   // Try Postgres query first if DB connected
   await ensureDbSchema();
   try {
     const client = await dbPool.connect();
     try {
-      let sql = 'SELECT * FROM canonical_people WHERE 1=1';
+      let where = ' WHERE 1=1';
       const values: any[] = [];
       let idx = 1;
 
       if (params.query) {
-        sql += ` AND (full_name ILIKE $${idx} OR headline ILIKE $${idx} OR bio ILIKE $${idx})`;
+        where += ` AND (full_name ILIKE $${idx} OR headline ILIKE $${idx} OR bio ILIKE $${idx})`;
         values.push(`%${params.query}%`);
         idx++;
       }
       if (params.company) {
-        sql += ` AND current_company ILIKE $${idx}`;
+        where += ` AND current_company ILIKE $${idx}`;
         values.push(`%${params.company}%`);
         idx++;
       }
       if (params.location) {
-        sql += ` AND location ILIKE $${idx}`;
+        where += ` AND location ILIKE $${idx}`;
         values.push(`%${params.location}%`);
         idx++;
       }
       if (params.skill) {
-        sql += ` AND $${idx} = ANY(skills)`;
+        where += ` AND $${idx} = ANY(skills)`;
         values.push(params.skill);
         idx++;
       }
 
-      sql += ` ORDER BY created_at DESC LIMIT ${params.limit || 50}`;
+      const sql = `SELECT *, COUNT(*) OVER() AS _matching_count FROM canonical_people${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
       const res = await client.query(sql, values);
       if (res.rows.length > 0) {
+        const matchingCount = parseInt(res.rows[0]._matching_count, 10);
         const records = res.rows.map(rowToPersonRecord);
         records.forEach(r => memoryStore.set(r.id, r));
-        return records;
+        return { records, matchingCount };
+      }
+      // Empty page: could be an offset past the end, or a genuinely empty result.
+      // Only fall through to the memory store when the DB has no matches at all.
+      const countRes = await client.query(
+        `SELECT COUNT(*) AS total FROM canonical_people${where}`,
+        values
+      );
+      const matchingCount = parseInt(countRes.rows[0].total, 10);
+      if (matchingCount > 0) {
+        return { records: [], matchingCount };
       }
     } finally {
       client.release();
@@ -386,7 +401,10 @@ export async function searchCanonicalPeople(params: {
     results = results.filter((p) => p.outreachStatus === params.status);
   }
 
-  return results;
+  return {
+    records: results.slice(offset, offset + limit),
+    matchingCount: results.length,
+  };
 }
 
 /**

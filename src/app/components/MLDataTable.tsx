@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PersonRecord } from '@/db/client';
-import { MapPin, Users, Plus, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { MapPin, Users, Plus, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export type SortField = 'fullName' | 'matchConfidence' | 'currentCompany' | 'location' | 'createdAt';
 export type SortOrder = 'asc' | 'desc';
@@ -10,7 +10,11 @@ export type SortOrder = 'asc' | 'desc';
 interface MLDataTableProps {
   people: PersonRecord[];
   loadedCount: number;
+  matchingCount: number;
   totalCount: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
   loading: boolean;
   selectedPersonId: string | null;
   onSelectPerson: (person: PersonRecord) => void;
@@ -116,7 +120,11 @@ function SkeletonRows() {
 export default function MLDataTable({
   people,
   loadedCount,
+  matchingCount,
   totalCount,
+  page,
+  pageSize,
+  onPageChange,
   loading,
   selectedPersonId,
   onSelectPerson,
@@ -128,6 +136,11 @@ export default function MLDataTable({
 }: MLDataTableProps) {
   const [sortField, setSortField] = useState<SortField>('matchConfidence');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [page]);
 
   const sortedPeople = [...people].sort((a, b) => {
     let valA = a[sortField] ?? '';
@@ -150,8 +163,16 @@ export default function MLDataTable({
     }
   }
 
+  const totalPages = Math.max(1, Math.ceil(matchingCount / pageSize));
+  const rangeStart = matchingCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(page * pageSize, matchingCount);
+  const hiddenByFilters = loadedCount - people.length;
+
   const showSkeleton = loading && people.length === 0;
-  const showEmpty = !loading && people.length === 0;
+  // Only show the full empty state when there are no matches at all —
+  // an empty *page* (offset past the end, or client filters) keeps the
+  // table shell so pagination stays reachable.
+  const showEmpty = !loading && people.length === 0 && matchingCount === 0;
 
   if (showEmpty) {
     return (
@@ -176,7 +197,7 @@ export default function MLDataTable({
 
   return (
     <div className="card overflow-hidden">
-      <div className="overflow-x-auto max-h-[70vh]">
+      <div ref={scrollRef} className="overflow-x-auto max-h-[70vh]">
         <table className="w-full text-left border-collapse">
           <thead className="bg-[#0B111C] sticky top-0 z-20 border-b border-slate-800 text-xs font-medium text-slate-400 select-none">
             <tr>
@@ -206,6 +227,14 @@ export default function MLDataTable({
           >
             {showSkeleton ? (
               <SkeletonRows />
+            ) : sortedPeople.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="py-10 text-center text-sm text-slate-500">
+                  {loadedCount === 0
+                    ? 'Nothing on this page — go back a page or adjust your search.'
+                    : 'All rows on this page are hidden by the active filters.'}
+                </td>
+              </tr>
             ) : (
               sortedPeople.map((person) => {
                 const isSelectedRow = selectedPersonId === person.id;
@@ -316,14 +345,18 @@ export default function MLDataTable({
         </table>
       </div>
 
-      {/* Footer */}
-      <div className="bg-[#0B111C] border-t border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+      {/* Footer: result range, confidence legend, pagination */}
+      <div className="bg-[#0B111C] border-t border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-slate-400">
         <div>
-          Showing <span className="font-medium text-slate-200">{people.length}</span> of{' '}
-          <span className="font-medium text-slate-200">{loadedCount}</span> loaded ·{' '}
-          {totalCount.toLocaleString()} total in database
+          <span className="font-medium text-slate-200">{rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()}</span>{' '}
+          of <span className="font-medium text-slate-200">{matchingCount.toLocaleString()}</span>
+          {matchingCount !== totalCount && <> · {totalCount.toLocaleString()} in database</>}
+          {hiddenByFilters > 0 && (
+            <span className="text-slate-500"> · {hiddenByFilters} on this page hidden by filters</span>
+          )}
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="hidden lg:flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400"></span> ≥ 90%
           </span>
@@ -333,6 +366,31 @@ export default function MLDataTable({
           <span className="inline-flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-rose-400"></span> &lt; 70% confidence
           </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onPageChange(page - 1)}
+            disabled={page <= 1 || loading}
+            className="h-7 px-2 rounded-md bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-200 border border-slate-700 transition-colors inline-flex items-center gap-1"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+            Prev
+          </button>
+          <span className="tabular-nums">
+            Page <span className="font-medium text-slate-200">{page}</span> of{' '}
+            <span className="font-medium text-slate-200">{totalPages.toLocaleString()}</span>
+          </span>
+          <button
+            onClick={() => onPageChange(page + 1)}
+            disabled={page >= totalPages || loading}
+            className="h-7 px-2 rounded-md bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-200 border border-slate-700 transition-colors inline-flex items-center gap-1"
+            aria-label="Next page"
+          >
+            Next
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
     </div>

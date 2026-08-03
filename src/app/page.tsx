@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Layers, Download } from 'lucide-react';
+import { Plus, Layers, Download, ExternalLink } from 'lucide-react';
 import { PersonRecord, IngestionRunLog } from '@/db/client';
 import MLMetricsHeader from './components/MLMetricsHeader';
 import MLFilterToolbar from './components/MLFilterToolbar';
@@ -10,9 +10,13 @@ import EntityInspectorDrawer from './components/EntityInspectorDrawer';
 import IngestModal from './components/IngestModal';
 import LogsModal from './components/LogsModal';
 
+const PAGE_SIZE = 50;
+
 export default function PeopleExplorerPage() {
   const [people, setPeople] = useState<PersonRecord[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [matchingCount, setMatchingCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [runs, setRuns] = useState<IngestionRunLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,6 +39,20 @@ export default function PeopleExplorerPage() {
 
   const isFirstFetch = useRef(true);
 
+  // Server-side filters reset pagination back to page 1
+  function updateQuery(q: string) {
+    setQuery(q);
+    setPage(1);
+  }
+  function updateSkillFilter(s: string) {
+    setSkillFilter(s);
+    setPage(1);
+  }
+  function updateLocationFilter(l: string) {
+    setLocationFilter(l);
+    setPage(1);
+  }
+
   // Fetch immediately on mount, debounce while the user is typing
   useEffect(() => {
     if (isFirstFetch.current) {
@@ -45,7 +63,7 @@ export default function PeopleExplorerPage() {
     }
     const timer = setTimeout(fetchPeople, 300);
     return () => clearTimeout(timer);
-  }, [query, skillFilter, locationFilter]);
+  }, [query, skillFilter, locationFilter, page]);
 
   async function fetchRuns() {
     try {
@@ -66,12 +84,15 @@ export default function PeopleExplorerPage() {
       if (query) params.set('q', query);
       if (skillFilter) params.set('skill', skillFilter);
       if (locationFilter) params.set('location', locationFilter);
+      params.set('page', String(page));
+      params.set('limit', String(PAGE_SIZE));
 
       const res = await fetch(`/api/search?${params.toString()}`);
       const json = await res.json();
       if (json.success) {
         setPeople(json.data);
         setTotalCount(json.total || json.data.length);
+        setMatchingCount(json.matching ?? json.data.length);
       }
     } catch (err) {
       console.error('Failed to load people:', err);
@@ -212,90 +233,114 @@ export default function PeopleExplorerPage() {
   }
 
   return (
-    <div className="space-y-4 pb-12">
-      {/* Page title & actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-100 tracking-tight">People</h1>
-          <p className="text-sm text-slate-400 mt-0.5">
-            Search, filter, and export people collected from the web.
-          </p>
+    <>
+      {/* App bar: brand + global actions in one sticky row */}
+      <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#0B0F17]/95 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-7 w-7 rounded-md bg-indigo-600 flex items-center justify-center font-semibold text-white text-sm shrink-0">
+              P
+            </div>
+            <span className="font-semibold text-sm text-slate-100 tracking-tight truncate">
+              PeopleDatabase
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsIngestModalOpen(true)}
+              className="h-8 px-3 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition-colors inline-flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Add people</span>
+              <span className="sm:hidden">Add</span>
+            </button>
+            <button
+              onClick={() => {
+                fetchRuns();
+                setIsLogsModalOpen(true);
+              }}
+              className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm border border-slate-700 transition-colors inline-flex items-center gap-1.5"
+            >
+              <Layers className="w-4 h-4" />
+              <span className="hidden sm:inline">Logs</span>
+            </button>
+            <button
+              onClick={exportToCSV}
+              className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm border border-slate-700 transition-colors hidden sm:inline-flex items-center gap-1.5"
+              title="Export as CSV (selected rows, or all filtered rows)"
+            >
+              <Download className="w-4 h-4" />
+              CSV
+            </button>
+            <button
+              onClick={exportToJSON}
+              className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm border border-slate-700 transition-colors hidden sm:inline-flex items-center"
+              title="Export as JSON (selected rows, or all filtered rows)"
+            >
+              JSON
+            </button>
+
+            <div className="w-px h-5 bg-slate-800 mx-1 hidden sm:block" />
+
+            <a
+              href="https://people.beenex.org"
+              target="_blank"
+              rel="noreferrer"
+              className="h-8 w-8 rounded-md text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors hidden sm:inline-flex items-center justify-center"
+              title="Open people.beenex.org"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsIngestModalOpen(true)}
-            className="h-8 px-3 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition-colors inline-flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            Add people
-          </button>
-          <button
-            onClick={() => {
-              fetchRuns();
-              setIsLogsModalOpen(true);
-            }}
-            className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm border border-slate-700 transition-colors inline-flex items-center gap-1.5"
-          >
-            <Layers className="w-4 h-4" />
-            Logs
-          </button>
-          <button
-            onClick={exportToCSV}
-            className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm border border-slate-700 transition-colors inline-flex items-center gap-1.5"
-            title="Export as CSV (selected rows, or all filtered rows)"
-          >
-            <Download className="w-4 h-4" />
-            CSV
-          </button>
-          <button
-            onClick={exportToJSON}
-            className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm border border-slate-700 transition-colors"
-            title="Export as JSON (selected rows, or all filtered rows)"
-          >
-            JSON
-          </button>
-        </div>
-      </div>
+      </header>
 
-      {/* Stats */}
-      <MLMetricsHeader totalCount={totalCount} people={filteredPeople} />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4 pb-12">
+        {/* Stats */}
+        <MLMetricsHeader totalCount={totalCount} people={filteredPeople} />
 
-      {/* Search & filters */}
-      <MLFilterToolbar
-        query={query}
-        setQuery={setQuery}
-        skillFilter={skillFilter}
-        setSkillFilter={setSkillFilter}
-        locationFilter={locationFilter}
-        setLocationFilter={setLocationFilter}
-        minConfidence={minConfidence}
-        setMinConfidence={setMinConfidence}
-        sourceFilter={sourceFilter}
-        setSourceFilter={setSourceFilter}
-        roleFilter={roleFilter}
-        setRoleFilter={setRoleFilter}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        loading={loading}
-        onRefresh={fetchPeople}
-        selectedCount={selectedIds.length}
-        onClearSelection={() => setSelectedIds([])}
-      />
+        {/* Search & filters */}
+        <MLFilterToolbar
+          query={query}
+          setQuery={updateQuery}
+          skillFilter={skillFilter}
+          setSkillFilter={updateSkillFilter}
+          locationFilter={locationFilter}
+          setLocationFilter={updateLocationFilter}
+          minConfidence={minConfidence}
+          setMinConfidence={setMinConfidence}
+          sourceFilter={sourceFilter}
+          setSourceFilter={setSourceFilter}
+          roleFilter={roleFilter}
+          setRoleFilter={setRoleFilter}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          loading={loading}
+          onRefresh={fetchPeople}
+          selectedCount={selectedIds.length}
+          onClearSelection={() => setSelectedIds([])}
+        />
 
-      {/* Data table */}
-      <MLDataTable
-        people={filteredPeople}
-        loadedCount={people.length}
-        totalCount={totalCount}
-        loading={loading}
-        selectedPersonId={selectedPerson?.id || null}
-        onSelectPerson={(person) => setSelectedPerson(person)}
-        selectedIds={selectedIds}
-        allVisibleSelected={allVisibleSelected}
-        onToggleSelectId={toggleSelectId}
-        onToggleSelectAll={toggleSelectAll}
-        onOpenIngestModal={() => setIsIngestModalOpen(true)}
-      />
+        {/* Data table */}
+        <MLDataTable
+          people={filteredPeople}
+          loadedCount={people.length}
+          matchingCount={matchingCount}
+          totalCount={totalCount}
+          page={page}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+          loading={loading}
+          selectedPersonId={selectedPerson?.id || null}
+          onSelectPerson={(person) => setSelectedPerson(person)}
+          selectedIds={selectedIds}
+          allVisibleSelected={allVisibleSelected}
+          onToggleSelectId={toggleSelectId}
+          onToggleSelectAll={toggleSelectAll}
+          onOpenIngestModal={() => setIsIngestModalOpen(true)}
+        />
+      </main>
 
       {/* Person detail drawer */}
       <EntityInspectorDrawer
@@ -319,6 +364,6 @@ export default function PeopleExplorerPage() {
         onClose={() => setIsLogsModalOpen(false)}
         runs={runs}
       />
-    </div>
+    </>
   );
 }
