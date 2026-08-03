@@ -21,6 +21,9 @@ export default function PeopleExplorerPage() {
   const [skillFilter, setSkillFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const [minConfidence, setMinConfidence] = useState<number>(0);
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   // Selection & Drawer states
   const [selectedPerson, setSelectedPerson] = useState<PersonRecord | null>(null);
@@ -58,12 +61,7 @@ export default function PeopleExplorerPage() {
       const res = await fetch(`/api/search?${params.toString()}`);
       const json = await res.json();
       if (json.success) {
-        let records: PersonRecord[] = json.data;
-        // Filter by min confidence if specified
-        if (minConfidence > 0) {
-          records = records.filter(p => p.matchConfidence >= minConfidence);
-        }
-        setPeople(records);
+        setPeople(json.data);
         setTotalCount(json.total || json.data.length);
       }
     } catch (err) {
@@ -73,14 +71,60 @@ export default function PeopleExplorerPage() {
     }
   }
 
-  // Filter local records by confidence if changed without refetching
-  const filteredPeople = minConfidence > 0
-    ? people.filter(p => p.matchConfidence >= minConfidence)
-    : people;
+  // Filter records dynamically based on all active field toggles
+  const filteredPeople = people.filter((p) => {
+    // 1. Min Confidence
+    if (minConfidence > 0 && p.matchConfidence < minConfidence) return false;
+
+    // 2. Source Toggle
+    if (sourceFilter) {
+      const hasMatchingSource = (p.sources || []).some((s) =>
+        s.domain.toLowerCase().includes(sourceFilter.toLowerCase()) ||
+        s.url.toLowerCase().includes(sourceFilter.toLowerCase())
+      );
+      if (!hasMatchingSource && sourceFilter !== 'exa') return false;
+    }
+
+    // 3. Role / Title Toggle
+    if (roleFilter) {
+      const titleStr = (p.currentTitle || '').toLowerCase();
+      const headlineStr = (p.headline || '').toLowerCase();
+      const bioStr = (p.bio || '').toLowerCase();
+
+      if (roleFilter === 'ai') {
+        const isAi = ['ai', 'ml', 'machine learning', 'deep learning', 'nlp', 'researcher'].some(kw =>
+          titleStr.includes(kw) || headlineStr.includes(kw) || bioStr.includes(kw)
+        );
+        if (!isAi) return false;
+      } else if (roleFilter === 'engineer') {
+        const isEng = ['engineer', 'developer', 'architect', 'software', 'backend', 'fullstack'].some(kw =>
+          titleStr.includes(kw) || headlineStr.includes(kw)
+        );
+        if (!isEng) return false;
+      } else if (roleFilter === 'founder') {
+        const isFounder = ['founder', 'ceo', 'cto', 'co-founder', 'executive', 'vp', 'director'].some(kw =>
+          titleStr.includes(kw) || headlineStr.includes(kw)
+        );
+        if (!isFounder) return false;
+      } else if (roleFilter === 'research') {
+        const isResearch = ['research', 'scientist', 'phd', 'postdoc', 'fellow'].some(kw =>
+          titleStr.includes(kw) || headlineStr.includes(kw) || bioStr.includes(kw)
+        );
+        if (!isResearch) return false;
+      }
+    }
+
+    // 4. Outreach Status Toggle
+    if (statusFilter) {
+      if ((p.outreachStatus || 'uncontacted') !== statusFilter) return false;
+    }
+
+    return true;
+  });
 
   function toggleSelectId(id: string) {
     if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(item => item !== id));
+      setSelectedIds(selectedIds.filter((item) => item !== id));
     } else {
       setSelectedIds([...selectedIds, id]);
     }
@@ -90,17 +134,29 @@ export default function PeopleExplorerPage() {
     if (selectedIds.length === filteredPeople.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredPeople.map(p => p.id));
+      setSelectedIds(filteredPeople.map((p) => p.id));
     }
   }
 
   function exportToCSV() {
-    const recordsToExport = selectedIds.length > 0
-      ? filteredPeople.filter(p => selectedIds.includes(p.id))
-      : filteredPeople;
+    const recordsToExport =
+      selectedIds.length > 0
+        ? filteredPeople.filter((p) => selectedIds.includes(p.id))
+        : filteredPeople;
 
-    const headers = ['ID', 'Full Name', 'Title', 'Company', 'Primary Email', 'Location', 'Skills', 'Match Confidence', 'Outreach Status', 'Extraction Engine'];
-    const rows = recordsToExport.map(p => [
+    const headers = [
+      'ID',
+      'Full Name',
+      'Title',
+      'Company',
+      'Primary Email',
+      'Location',
+      'Skills',
+      'Match Confidence',
+      'Outreach Status',
+      'Extraction Engine',
+    ];
+    const rows = recordsToExport.map((p) => [
       p.id,
       `"${p.fullName}"`,
       `"${p.currentTitle || ''}"`,
@@ -110,10 +166,12 @@ export default function PeopleExplorerPage() {
       `"${p.skills.join(', ')}"`,
       p.matchConfidence,
       p.outreachStatus || 'uncontacted',
-      p.extractionMethod || 'ai-terra'
+      p.extractionMethod || 'ai-terra',
     ]);
 
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join(
+      '\n'
+    );
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -125,16 +183,20 @@ export default function PeopleExplorerPage() {
   }
 
   function exportToJSON() {
-    const recordsToExport = selectedIds.length > 0
-      ? filteredPeople.filter(p => selectedIds.includes(p.id))
-      : filteredPeople;
+    const recordsToExport =
+      selectedIds.length > 0
+        ? filteredPeople.filter((p) => selectedIds.includes(p.id))
+        : filteredPeople;
 
     const jsonString = JSON.stringify(recordsToExport, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `peopledatabase_featurematrix_${Date.now()}.json`);
+    link.setAttribute(
+      'download',
+      `peopledatabase_featurematrix_${Date.now()}.json`
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -151,7 +213,10 @@ export default function PeopleExplorerPage() {
         people={filteredPeople}
         runsCount={runs.length}
         onOpenIngest={() => setIsIngestModalOpen(true)}
-        onOpenLogs={() => { fetchRuns(); setIsLogsModalOpen(true); }}
+        onOpenLogs={() => {
+          fetchRuns();
+          setIsLogsModalOpen(true);
+        }}
         onExportCSV={exportToCSV}
         onExportJSON={exportToJSON}
       />
@@ -166,6 +231,12 @@ export default function PeopleExplorerPage() {
         setLocationFilter={setLocationFilter}
         minConfidence={minConfidence}
         setMinConfidence={setMinConfidence}
+        sourceFilter={sourceFilter}
+        setSourceFilter={setSourceFilter}
+        roleFilter={roleFilter}
+        setRoleFilter={setRoleFilter}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
         loading={loading}
         onRefresh={fetchPeople}
         selectedCount={selectedIds.length}
