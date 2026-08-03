@@ -1,23 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PersonRecord } from '@/db/client';
 import {
   X,
   User,
-  ShieldCheck,
   Mail,
-  MapPin,
   ExternalLink,
   Code,
   Globe,
   Copy,
   Check,
-  Cpu,
-  Layers,
-  Sparkles,
-  Phone,
-  Tag
+  Info,
+  Phone
 } from 'lucide-react';
 
 interface EntityInspectorDrawerProps {
@@ -25,9 +20,28 @@ interface EntityInspectorDrawerProps {
   onClose: () => void;
 }
 
+const TABS = [
+  { id: 'overview', label: 'Overview', icon: User },
+  { id: 'details', label: 'Details', icon: Info },
+  { id: 'json', label: 'JSON', icon: Code },
+  { id: 'sources', label: 'Sources', icon: Globe },
+] as const;
+
+type TabId = (typeof TABS)[number]['id'];
+
 export default function EntityInspectorDrawer({ person, onClose }: EntityInspectorDrawerProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'model' | 'json' | 'sources'>('overview');
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [copiedJson, setCopiedJson] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+
+  useEffect(() => {
+    if (!person) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [person, onClose]);
 
   if (!person) return null;
 
@@ -39,257 +53,267 @@ export default function EntityInspectorDrawer({ person, onClose }: EntityInspect
     setTimeout(() => setCopiedJson(false), 2000);
   }
 
+  function handleCopyId() {
+    if (!person) return;
+    navigator.clipboard.writeText(person.id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  }
+
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-sm flex justify-end animate-fadeIn">
-      {/* Side Drawer Container */}
-      <div className="bg-[#0B0F17] border-l border-slate-800 w-full max-w-2xl h-full flex flex-col shadow-2xl relative overflow-hidden animate-slideLeft">
-        
-        {/* Drawer Header */}
-        <div className="p-6 border-b border-slate-800/80 bg-[#0D1321]/90 flex items-start justify-between">
-          <div className="flex items-start gap-4">
+    <div
+      className="fixed inset-0 z-50 overflow-hidden bg-black/60 flex justify-end animate-fadeIn"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Details for ${person.fullName}`}
+    >
+      <div
+        className="bg-[#0B0F17] border-l border-slate-800 w-full max-w-2xl h-full flex flex-col shadow-2xl relative overflow-hidden animate-slideLeft"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="p-6 border-b border-slate-800 bg-[#101724] flex items-start justify-between gap-4">
+          <div className="flex items-start gap-4 min-w-0">
             <img
               src={person.avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(person.fullName)}`}
-              alt={person.fullName}
-              className="w-14 h-14 rounded-2xl object-cover border border-slate-700 shadow-xl"
+              alt=""
+              className="w-12 h-12 rounded-full object-cover border border-slate-700 shrink-0"
             />
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl font-bold text-white tracking-tight">{person.fullName}</h2>
-                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold font-mono border ${
-                  confidencePct >= 90
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                    : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                }`}>
-                  {confidencePct}% Match Confidence
+                <h2 className="text-lg font-semibold text-slate-100 tracking-tight">{person.fullName}</h2>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    confidencePct >= 90
+                      ? 'bg-emerald-500/10 text-emerald-400'
+                      : confidencePct >= 70
+                      ? 'bg-amber-500/10 text-amber-400'
+                      : 'bg-rose-500/10 text-rose-400'
+                  }`}
+                >
+                  {confidencePct}% match
                 </span>
               </div>
-              <p className="text-xs font-semibold text-indigo-400 mt-0.5">
-                {person.currentTitle || 'Professional'} {person.currentCompany ? `@ ${person.currentCompany}` : ''}
+              <p className="text-sm text-slate-400 mt-0.5 truncate">
+                {person.currentTitle || '—'}
+                {person.currentCompany ? ` · ${person.currentCompany}` : ''}
               </p>
-              <p className="text-[11px] text-slate-400 font-mono mt-1">
-                UUID: {person.id}
-              </p>
+              <button
+                onClick={handleCopyId}
+                className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 font-mono rounded transition-colors"
+                title="Copy ID"
+              >
+                <span className="truncate max-w-[280px]">{person.id}</span>
+                {copiedId ? (
+                  <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                ) : (
+                  <Copy className="w-3 h-3 shrink-0" />
+                )}
+              </button>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all border border-slate-700"
+            className="p-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors shrink-0"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Drawer Navigation Tabs */}
-        <div className="flex border-b border-slate-800 bg-[#080C14] px-6 text-xs font-bold">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-1.5 ${
-              activeTab === 'overview'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <User className="w-3.5 h-3.5" />
-            Overview
-          </button>
-
-          <button
-            onClick={() => setActiveTab('model')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-1.5 ${
-              activeTab === 'model'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Cpu className="w-3.5 h-3.5" />
-            ML Resolution
-          </button>
-
-          <button
-            onClick={() => setActiveTab('json')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-1.5 ${
-              activeTab === 'json'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Code className="w-3.5 h-3.5" />
-            Raw Feature Matrix (JSON)
-          </button>
-
-          <button
-            onClick={() => setActiveTab('sources')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-1.5 ${
-              activeTab === 'sources'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Globe className="w-3.5 h-3.5" />
-            Sources ({person.sources?.length || 0})
-          </button>
+        {/* Tabs */}
+        <div className="flex border-b border-slate-800 bg-[#0B0F17] px-6 text-sm font-medium">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            const count = tab.id === 'sources' ? ` (${person.sources?.length || 0})` : '';
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`py-2.5 px-3.5 border-b-2 -mb-px transition-colors inline-flex items-center gap-1.5 ${
+                  isActive
+                    ? 'border-indigo-500 text-indigo-400'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {tab.label}{count}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Tab Content Body */}
+        {/* Tab content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          
-          {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              {/* Bio & Summary */}
               <div className="space-y-2">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Bio & Headline Summary</h4>
-                <p className="text-sm text-slate-200 leading-relaxed bg-[#0D1321] p-4 rounded-xl border border-slate-800">
-                  {person.bio || person.headline || 'No summary registered.'}
+                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Bio</h4>
+                <p className="text-sm text-slate-200 leading-relaxed inset p-4 rounded-md">
+                  {person.bio || person.headline || 'No bio available.'}
                 </p>
               </div>
 
-              {/* Verified Contact Details */}
               <div className="space-y-2">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Verified Contact Channels</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Contact</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {person.emails.length > 0 ? (
                     person.emails.map((email, idx) => (
-                      <div key={idx} className="p-3 rounded-xl bg-[#0D1321] border border-slate-800 flex items-center justify-between text-xs text-slate-200">
+                      <div key={idx} className="p-3 rounded-md inset flex items-center justify-between text-sm text-slate-200">
                         <span className="truncate">{email}</span>
-                        <Mail className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                        <Mail className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
                       </div>
                     ))
                   ) : (
-                    <p className="text-xs text-slate-500 italic">No email fetched yet.</p>
+                    <p className="text-sm text-slate-500">No email on record.</p>
                   )}
                   {person.phones.map((phone, idx) => (
-                    <div key={idx} className="p-3 rounded-xl bg-[#0D1321] border border-slate-800 flex items-center justify-between text-xs text-slate-200">
+                    <div key={idx} className="p-3 rounded-md inset flex items-center justify-between text-sm text-slate-200">
                       <span>{phone}</span>
-                      <Phone className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                      <Phone className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Skills & Vector Features */}
               <div className="space-y-2">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Extracted Skill Features ({person.skills.length})</h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {person.skills.map((skill, idx) => (
-                    <span
-                      key={idx}
-                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Digital Footprint Links */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Platform Links</h4>
-                <div className="flex flex-wrap gap-2">
-                  {person.socialLinks.map((link, idx) => (
-                    <a
-                      key={idx}
-                      href={link.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-2 rounded-xl bg-[#0D1321] hover:bg-slate-800 text-xs text-slate-200 border border-slate-800 flex items-center gap-2 transition-all"
-                    >
-                      <span className="capitalize font-semibold text-indigo-400">{link.platform}</span>
-                      <ExternalLink className="w-3 h-3 text-slate-400" />
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: ML RESOLUTION METRICS */}
-          {activeTab === 'model' && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-[#0D1321] border border-slate-800 space-y-3">
-                <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Cpu className="w-4 h-4 text-indigo-400" />
-                  Resolution Strategy & Metadata
+                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+                  Skills ({person.skills.length})
                 </h4>
-                <div className="grid grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <span className="text-slate-400 font-medium">Extraction Engine:</span>
-                    <p className="font-mono font-bold text-slate-100">{person.extractionMethod || 'ai-terra'}</p>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 font-medium">Deduplication Strategy:</span>
-                    <p className="font-mono font-bold text-purple-300">{person.dedupMethod || 'ai-resolved'}</p>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 font-medium">Match Confidence:</span>
-                    <p className="font-mono font-bold text-emerald-400">{(person.matchConfidence * 100).toFixed(2)}%</p>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 font-medium">Outreach Status:</span>
-                    <p className="font-mono font-bold text-slate-200 capitalize">{person.outreachStatus}</p>
-                  </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {person.skills.length > 0 ? (
+                    person.skills.map((skill, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2 py-1 text-xs rounded-md bg-slate-800 text-slate-300"
+                      >
+                        {skill}
+                      </span>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">No skills on record.</p>
+                  )}
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-[#0D1321] border border-slate-800 space-y-2">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Classification Tags</h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {person.tags.map((tag, i) => (
-                    <span key={i} className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs font-mono">
-                      #{tag}
-                    </span>
-                  ))}
-                  {person.tags.length === 0 && <p className="text-xs text-slate-500 italic">No custom tags assigned.</p>}
+              <div className="space-y-2">
+                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Links</h4>
+                <div className="flex flex-wrap gap-2">
+                  {person.socialLinks.length > 0 ? (
+                    person.socialLinks.map((link, idx) => (
+                      <a
+                        key={idx}
+                        href={link.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 rounded-md inset hover:bg-slate-800 text-sm text-slate-200 inline-flex items-center gap-2 transition-colors"
+                      >
+                        <span className="capitalize">{link.platform}</span>
+                        <ExternalLink className="w-3 h-3 text-slate-500" />
+                      </a>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">No links on record.</p>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB 3: RAW FEATURE MATRIX JSON */}
+          {activeTab === 'details' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-md inset space-y-3">
+                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Record details</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-xs text-slate-500">Extraction method</span>
+                    <p className="text-slate-200 font-mono text-xs mt-0.5">{person.extractionMethod || '—'}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500">Deduplication</span>
+                    <p className="text-slate-200 font-mono text-xs mt-0.5">{person.dedupMethod || '—'}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500">Match confidence</span>
+                    <p className="text-slate-200 mt-0.5">{(person.matchConfidence * 100).toFixed(1)}%</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500">Outreach status</span>
+                    <p className="text-slate-200 capitalize mt-0.5">{(person.outreachStatus || 'uncontacted').replace(/_/g, ' ')}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500">Created</span>
+                    <p className="text-slate-200 mt-0.5">{new Date(person.createdAt).toLocaleDateString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500">Updated</span>
+                    <p className="text-slate-200 mt-0.5">{new Date(person.updatedAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-md inset space-y-2">
+                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide">Tags</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {person.tags.length > 0 ? (
+                    person.tags.map((tag, i) => (
+                      <span key={i} className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-xs">
+                        {tag}
+                      </span>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">No tags.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'json' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono text-slate-400">Canonical Entity Record Schema</span>
+              <div className="flex items-center justify-end">
                 <button
                   onClick={handleCopyJson}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all flex items-center gap-1.5 shadow-md"
+                  className="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-xs transition-colors inline-flex items-center gap-1.5"
                 >
-                  {copiedJson ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedJson ? 'Copied to Clipboard' : 'Copy JSON'}</span>
+                  {copiedJson ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedJson ? 'Copied' : 'Copy JSON'}</span>
                 </button>
               </div>
 
-              <pre className="p-4 rounded-xl bg-[#080C14] border border-slate-800 text-[11px] font-mono text-emerald-400 overflow-x-auto max-h-[50vh] leading-relaxed">
+              <pre className="p-4 rounded-md inset text-xs font-mono text-slate-300 overflow-x-auto max-h-[60vh] leading-relaxed">
                 {JSON.stringify(person, null, 2)}
               </pre>
             </div>
           )}
 
-          {/* TAB 4: DATA SOURCES & PROVENANCE */}
           {activeTab === 'sources' && (
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ingested Web & API Sources</h4>
+            <div className="space-y-2">
               {person.sources && person.sources.length > 0 ? (
                 person.sources.map((src, idx) => (
-                  <div key={idx} className="p-3.5 rounded-xl bg-[#0D1321] border border-slate-800 flex items-center justify-between text-xs">
-                    <div>
-                      <p className="font-bold text-indigo-300 capitalize">{src.domain}</p>
-                      <a href={src.url} target="_blank" rel="noreferrer" className="text-slate-400 hover:underline truncate max-w-sm block text-[11px] font-mono">
-                        {src.url}
-                      </a>
+                  <a
+                    key={idx}
+                    href={src.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-3.5 rounded-md inset hover:bg-slate-800 flex items-center justify-between gap-3 transition-colors group"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-200">{src.domain.replace('www.', '')}</p>
+                      <p className="text-xs text-slate-500 font-mono truncate mt-0.5">{src.url}</p>
                     </div>
-                    <ExternalLink className="w-4 h-4 text-slate-500" />
-                  </div>
+                    <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-slate-300 shrink-0" />
+                  </a>
                 ))
               ) : (
-                <p className="text-xs text-slate-500 italic">No explicit web sources logged.</p>
+                <p className="text-sm text-slate-500">No sources on record.</p>
               )}
             </div>
           )}
-
         </div>
-
       </div>
     </div>
   );

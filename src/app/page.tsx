@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Layers, Download } from 'lucide-react';
 import { PersonRecord, IngestionRunLog } from '@/db/client';
-import DottedBackground from './components/DottedBackground';
 import MLMetricsHeader from './components/MLMetricsHeader';
 import MLFilterToolbar from './components/MLFilterToolbar';
 import MLDataTable from './components/MLDataTable';
@@ -33,9 +33,18 @@ export default function PeopleExplorerPage() {
   const [isIngestModalOpen, setIsIngestModalOpen] = useState(false);
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
 
+  const isFirstFetch = useRef(true);
+
+  // Fetch immediately on mount, debounce while the user is typing
   useEffect(() => {
-    fetchPeople();
-    fetchRuns();
+    if (isFirstFetch.current) {
+      isFirstFetch.current = false;
+      fetchPeople();
+      fetchRuns();
+      return;
+    }
+    const timer = setTimeout(fetchPeople, 300);
+    return () => clearTimeout(timer);
   }, [query, skillFilter, locationFilter]);
 
   async function fetchRuns() {
@@ -65,18 +74,16 @@ export default function PeopleExplorerPage() {
         setTotalCount(json.total || json.data.length);
       }
     } catch (err) {
-      console.error('Failed to load people dataset:', err);
+      console.error('Failed to load people:', err);
     } finally {
       setLoading(false);
     }
   }
 
-  // Filter records dynamically based on all active field toggles
+  // Client-side filters applied on top of the fetched results
   const filteredPeople = people.filter((p) => {
-    // 1. Min Confidence
     if (minConfidence > 0 && p.matchConfidence < minConfidence) return false;
 
-    // 2. Source Toggle
     if (sourceFilter) {
       const hasMatchingSource = (p.sources || []).some((s) =>
         s.domain.toLowerCase().includes(sourceFilter.toLowerCase()) ||
@@ -85,7 +92,6 @@ export default function PeopleExplorerPage() {
       if (!hasMatchingSource && sourceFilter !== 'exa') return false;
     }
 
-    // 3. Role / Title Toggle
     if (roleFilter) {
       const titleStr = (p.currentTitle || '').toLowerCase();
       const headlineStr = (p.headline || '').toLowerCase();
@@ -114,13 +120,18 @@ export default function PeopleExplorerPage() {
       }
     }
 
-    // 4. Outreach Status Toggle
     if (statusFilter) {
       if ((p.outreachStatus || 'uncontacted') !== statusFilter) return false;
     }
 
     return true;
   });
+
+  // Selection may contain ids that are no longer visible after filtering,
+  // so "all selected" means every *visible* row is selected.
+  const allVisibleSelected =
+    filteredPeople.length > 0 &&
+    filteredPeople.every((p) => selectedIds.includes(p.id));
 
   function toggleSelectId(id: string) {
     if (selectedIds.includes(id)) {
@@ -131,10 +142,11 @@ export default function PeopleExplorerPage() {
   }
 
   function toggleSelectAll() {
-    if (selectedIds.length === filteredPeople.length) {
-      setSelectedIds([]);
+    const visibleIds = filteredPeople.map((p) => p.id);
+    if (allVisibleSelected) {
+      setSelectedIds(selectedIds.filter((id) => !visibleIds.includes(id)));
     } else {
-      setSelectedIds(filteredPeople.map((p) => p.id));
+      setSelectedIds(Array.from(new Set([...selectedIds, ...visibleIds])));
     }
   }
 
@@ -154,7 +166,7 @@ export default function PeopleExplorerPage() {
       'Skills',
       'Match Confidence',
       'Outreach Status',
-      'Extraction Engine',
+      'Extraction Method',
     ];
     const rows = recordsToExport.map((p) => [
       p.id,
@@ -166,7 +178,7 @@ export default function PeopleExplorerPage() {
       `"${p.skills.join(', ')}"`,
       p.matchConfidence,
       p.outreachStatus || 'uncontacted',
-      p.extractionMethod || 'ai-terra',
+      p.extractionMethod || '',
     ]);
 
     const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join(
@@ -176,7 +188,7 @@ export default function PeopleExplorerPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `peopledatabase_mlexport_${Date.now()}.csv`);
+    link.setAttribute('download', `people_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -193,35 +205,62 @@ export default function PeopleExplorerPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute(
-      'download',
-      `peopledatabase_featurematrix_${Date.now()}.json`
-    );
+    link.setAttribute('download', `people_${Date.now()}.json`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   }
 
   return (
-    <div className="relative space-y-6 pb-12">
-      {/* 21st.dev Background canvas */}
-      <DottedBackground />
+    <div className="space-y-4 pb-12">
+      {/* Page title & actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-100 tracking-tight">People</h1>
+          <p className="text-sm text-slate-400 mt-0.5">
+            Search, filter, and export people collected from the web.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsIngestModalOpen(true)}
+            className="h-8 px-3 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition-colors inline-flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            Add people
+          </button>
+          <button
+            onClick={() => {
+              fetchRuns();
+              setIsLogsModalOpen(true);
+            }}
+            className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm border border-slate-700 transition-colors inline-flex items-center gap-1.5"
+          >
+            <Layers className="w-4 h-4" />
+            Logs
+          </button>
+          <button
+            onClick={exportToCSV}
+            className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm border border-slate-700 transition-colors inline-flex items-center gap-1.5"
+            title="Export as CSV (selected rows, or all filtered rows)"
+          >
+            <Download className="w-4 h-4" />
+            CSV
+          </button>
+          <button
+            onClick={exportToJSON}
+            className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm border border-slate-700 transition-colors"
+            title="Export as JSON (selected rows, or all filtered rows)"
+          >
+            JSON
+          </button>
+        </div>
+      </div>
 
-      {/* Dataset Metrics Header */}
-      <MLMetricsHeader
-        totalCount={totalCount}
-        people={filteredPeople}
-        runsCount={runs.length}
-        onOpenIngest={() => setIsIngestModalOpen(true)}
-        onOpenLogs={() => {
-          fetchRuns();
-          setIsLogsModalOpen(true);
-        }}
-        onExportCSV={exportToCSV}
-        onExportJSON={exportToJSON}
-      />
+      {/* Stats */}
+      <MLMetricsHeader totalCount={totalCount} people={filteredPeople} />
 
-      {/* Feature & Search Filter Toolbar */}
+      {/* Search & filters */}
       <MLFilterToolbar
         query={query}
         setQuery={setQuery}
@@ -243,25 +282,28 @@ export default function PeopleExplorerPage() {
         onClearSelection={() => setSelectedIds([])}
       />
 
-      {/* Main ML Scientist Data Table */}
+      {/* Data table */}
       <MLDataTable
         people={filteredPeople}
+        loadedCount={people.length}
+        totalCount={totalCount}
         loading={loading}
         selectedPersonId={selectedPerson?.id || null}
         onSelectPerson={(person) => setSelectedPerson(person)}
         selectedIds={selectedIds}
+        allVisibleSelected={allVisibleSelected}
         onToggleSelectId={toggleSelectId}
         onToggleSelectAll={toggleSelectAll}
         onOpenIngestModal={() => setIsIngestModalOpen(true)}
       />
 
-      {/* Slide-out ML Entity Inspector Drawer */}
+      {/* Person detail drawer */}
       <EntityInspectorDrawer
         person={selectedPerson}
         onClose={() => setSelectedPerson(null)}
       />
 
-      {/* Continuous Ingestion Modal */}
+      {/* Ingestion modal */}
       <IngestModal
         isOpen={isIngestModalOpen}
         onClose={() => setIsIngestModalOpen(false)}
@@ -271,7 +313,7 @@ export default function PeopleExplorerPage() {
         }}
       />
 
-      {/* Ingestion Run Logs Modal */}
+      {/* Run logs modal */}
       <LogsModal
         isOpen={isLogsModalOpen}
         onClose={() => setIsLogsModalOpen(false)}

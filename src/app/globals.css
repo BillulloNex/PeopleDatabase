@@ -3,50 +3,37 @@
 @import "tailwindcss/utilities";
 
 :root {
-  --font-inter: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --bg-page: #0B0F17;
+  --bg-card: #101724;
+  --bg-inset: #0B111C;
+  --border-default: #1E293B;
 }
 
 body {
-  font-family: var(--font-inter);
-  background-color: #080C14;
-  color: #F3F4F6;
+  font-family: var(--font-sans);
+  background-color: var(--bg-page);
+  color: #E2E8F0;
   overflow-x: hidden;
 }
 
-.glass-card {
-  background: rgba(15, 22, 38, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* Flat card surface — single border, no blur, no glow */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
 }
 
-.glass-card-hover {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+/* Inset panels inside cards (inputs, code blocks, nested boxes) */
+.inset {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
 }
 
-.glass-card-hover:hover {
-  background: rgba(26, 35, 54, 0.85);
-  border-color: rgba(99, 102, 241, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 12px 30px -10px rgba(99, 102, 241, 0.15);
-}
-
-.gradient-text {
-  background: linear-gradient(135deg, #818CF8 0%, #C084FC 50%, #F472B6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.gradient-border {
-  position: relative;
-  border-radius: 0.75rem;
-  background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(192,132,252,0.2));
-  padding: 1px;
-}
-
-.gradient-border > div {
-  background: #0D1321;
-  border-radius: 0.7rem;
+/* Visible keyboard focus everywhere */
+:focus-visible {
+  outline: 2px solid #6366F1;
+  outline-offset: 1px;
 }
 
 /* Animations */
@@ -61,11 +48,11 @@ body {
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.15s ease-out forwards;
 }
 
 .animate-slideLeft {
-  animation: slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Custom Scrollbar */

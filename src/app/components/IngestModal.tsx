@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Sparkles, Globe, Github, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Globe, Github, RefreshCw, CheckCircle2, Search, Plus } from 'lucide-react';
 
 interface IngestModalProps {
   isOpen: boolean;
@@ -15,6 +15,15 @@ export default function IngestModal({ isOpen, onClose, onSuccess }: IngestModalP
   const [githubUser, setGithubUser] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -35,16 +44,16 @@ export default function IngestModal({ isOpen, onClose, onSuccess }: IngestModalP
       });
       const json = await res.json();
       if (json.success) {
-        setMessage(`Successfully resolved & ingested: ${json.data.fullName}`);
+        setMessage(`Added: ${json.data.fullName}`);
         setExaQuery('');
         onSuccess();
       } else {
-        setMessage('Ingestion completed with fallback entity resolution.');
+        setMessage('Ingestion finished — see logs for details.');
         onSuccess();
       }
     } catch (err) {
-      console.error('Exa Ingest Error:', err);
-      setMessage('Failed to execute Exa ingest.');
+      console.error('Exa ingest error:', err);
+      setMessage('Search failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -67,118 +76,127 @@ export default function IngestModal({ isOpen, onClose, onSuccess }: IngestModalP
       });
       const json = await res.json();
       if (json.success) {
-        setMessage(`GitHub Profile ingested & resolved: ${json.data.fullName}`);
+        setMessage(`Added: ${json.data.fullName}`);
         setGithubUser('');
         onSuccess();
       } else {
-        setMessage('GitHub profile parsed.');
+        setMessage('Profile imported — see logs for details.');
         onSuccess();
       }
     } catch (err) {
-      console.error('GitHub Ingest Error:', err);
-      setMessage('Failed to execute GitHub ingest.');
+      console.error('GitHub ingest error:', err);
+      setMessage('Import failed. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-      <div className="bg-[#0F1626] border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 space-y-6 shadow-2xl relative">
+    <div
+      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 animate-fadeIn"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add people"
+    >
+      <div
+        className="card max-w-lg w-full p-6 space-y-5 shadow-2xl relative"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+          className="absolute top-4 right-4 p-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+          aria-label="Close"
         >
           <X className="w-5 h-5" />
         </button>
 
         <div className="space-y-1">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-indigo-400" />
-            Live Continuous Ingestion Engine
+          <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+            <Plus className="w-5 h-5 text-indigo-400" />
+            Add people
           </h2>
-          <p className="text-xs text-slate-400">
-            Trigger neural web discovery via Exa.ai or sync developer profiles via GitHub API.
+          <p className="text-sm text-slate-400">
+            Search the web with Exa, or import a profile from GitHub.
           </p>
         </div>
 
-        {/* Tab Buttons */}
-        <div className="flex bg-[#080C14] p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+        {/* Tabs */}
+        <div className="flex inset p-1 rounded-md text-sm font-medium">
           <button
             onClick={() => setTab('exa')}
-            className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-2 ${
-              tab === 'exa' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+            className={`flex-1 py-1.5 rounded transition-colors inline-flex items-center justify-center gap-2 ${
+              tab === 'exa' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Globe className="w-4 h-4" />
-            Exa Neural Search
+            Web search
           </button>
           <button
             onClick={() => setTab('github')}
-            className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-2 ${
-              tab === 'github' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+            className={`flex-1 py-1.5 rounded transition-colors inline-flex items-center justify-center gap-2 ${
+              tab === 'github' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Github className="w-4 h-4" />
-            GitHub Profile
+            GitHub
           </button>
         </div>
 
-        {/* Exa Form */}
         {tab === 'exa' && (
           <form onSubmit={handleExaIngest} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                Neural Query / Discovery Prompt
+              <label htmlFor="exa-query" className="block text-sm font-medium text-slate-300 mb-1.5">
+                Search query
               </label>
               <input
+                id="exa-query"
                 type="text"
-                placeholder="e.g. AI research scientist at Anthropic working on Claude models"
+                placeholder="e.g. AI research scientist working on language models"
                 value={exaQuery}
                 onChange={(e) => setExaQuery(e.target.value)}
-                className="w-full bg-[#080C14] border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all"
+                className="w-full inset rounded-md px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500"
               />
             </div>
             <button
               type="submit"
               disabled={loading || !exaQuery.trim()}
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+              className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm rounded-md transition-colors inline-flex items-center justify-center gap-2"
             >
-              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {loading ? 'Resolving via GPT-5.6 Terra...' : 'Execute Exa Neural Search'}
+              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              {loading ? 'Searching…' : 'Search & add'}
             </button>
           </form>
         )}
 
-        {/* GitHub Form */}
         {tab === 'github' && (
           <form onSubmit={handleGitHubIngest} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                GitHub Developer Username
+              <label htmlFor="github-user" className="block text-sm font-medium text-slate-300 mb-1.5">
+                GitHub username
               </label>
               <input
+                id="github-user"
                 type="text"
-                placeholder="e.g. torvalds, karpathy, antirez"
+                placeholder="e.g. torvalds"
                 value={githubUser}
                 onChange={(e) => setGithubUser(e.target.value)}
-                className="w-full bg-[#080C14] border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all"
+                className="w-full inset rounded-md px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500"
               />
             </div>
             <button
               type="submit"
               disabled={loading || !githubUser.trim()}
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2"
+              className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm rounded-md transition-colors inline-flex items-center justify-center gap-2"
             >
               {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Github className="w-4 h-4" />}
-              {loading ? 'Fetching Developer Graph...' : 'Sync GitHub Developer'}
+              {loading ? 'Importing…' : 'Import profile'}
             </button>
           </form>
         )}
 
-        {/* Status Feedback */}
         {message && (
-          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+          <div className="p-3 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{message}</span>
           </div>
