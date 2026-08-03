@@ -316,7 +316,7 @@ export async function searchCanonicalPeople(params: {
       client.release();
     }
   } catch (err) {
-    // DB offline/unavailable -> Fallback to in-memory store
+    console.error('[Search] PostgreSQL query failed, falling back to memory store:', (err as Error).message || err);
   }
 
   // Memory store fallback filtering
