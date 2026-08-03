@@ -22,23 +22,20 @@ jobs:
           echo "TOTAL=$TOTAL" >> $GITHUB_ENV
           echo "Exported $TOTAL profiles"
 
-      - name: 📤 Push backup to backups branch
+      - name: 📤 Push backup to backup repository
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.BACKUP_TOKEN || github.token }}
         run: |
           TIMESTAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
           
-          # Clone repo (shallow)
-          git clone --depth 1 https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git /tmp/repo || true
+          # Clone backup repo (shallow)
+          git clone --depth 1 https://x-access-token:${GH_TOKEN}@github.com/BillulloNex/PeopleDatabase-backups.git /tmp/repo || true
           cd /tmp/repo
           
           git config user.name "PeopleDB Backup Bot"
           git config user.email "backup@peopledatabase.beenex.org"
           
-          # Switch to backups branch (create if doesn't exist)
-          git checkout backups 2>/dev/null || git checkout --orphan backups
-          
-          # Clean everything and add fresh backup
+          # Clean existing files (except git metadata)
           git rm -rf . 2>/dev/null || true
           mkdir -p snapshots
           
@@ -53,17 +50,18 @@ jobs:
           profiles = data.get('data', [])
           with open('README.md', 'w') as f:
               f.write('# PeopleDatabase Backups (auto-generated)\n\n')
-              f.write(f'**Total Profiles**: {total}\n')
-              f.write(f'**Last Backup**: ${TIMESTAMP}\n\n')
+              f.write(f'**Total Profiles**: {total}\n\n')
+              f.write(f'**Last Backup Timestamp**: {TIMESTAMP}\n\n')
               f.write('| Name | Title | Company | Source |\n|------|-------|---------|--------|\n')
               for p in profiles[:30]:
-                  name = p.get('fullName','').replace('|','-')
-                  title = p.get('currentTitle','').replace('|','-')
-                  company = p.get('currentCompany','').replace('|','-')
-                  src = (p.get('sources', [{}])[0] or {}).get('domain', '')
+                  name = str(p.get('fullName','')).replace('|','-')
+                  title = str(p.get('currentTitle','')).replace('|','-')
+                  company = str(p.get('currentCompany','')).replace('|','-')
+                  src = (p.get('sources', [{}])[0] or {}).get('domain', '') if isinstance(p.get('sources'), list) and len(p.get('sources')) > 0 else ''
                   f.write(f'| {name} | {title} | {company} | {src} |\n')
           "
           
           git add -A
           git commit -m "backup: ${TOTAL} profiles @ ${TIMESTAMP}" || echo "Nothing to commit"
-          git push origin backups --force
+          git push origin main --force
+
