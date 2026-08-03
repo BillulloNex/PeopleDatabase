@@ -1,4 +1,4 @@
-import { dbPool, meili, PersonRecord, IngestionRunLog } from '../db/client';
+import { dbPool, meili, PersonRecord, IngestionRunLog, initDatabaseSchema } from '../db/client';
 import { ExtractedPersonProfile, evaluateEntityMergeWithAI } from '../lib/openrouter';
 import { mirrorToMongoDB } from '../db/mongo-backup';
 import fs from 'fs';
@@ -89,8 +89,21 @@ function saveStoreToDisk() {
   }
 }
 
+// Database schema initialization guard
+let dbSchemaInitialized = false;
+async function ensureDbSchema() {
+  if (dbSchemaInitialized) return;
+  try {
+    await initDatabaseSchema();
+    dbSchemaInitialized = true;
+  } catch (err) {
+    console.error('[Store] Failed to initialize DB schema:', (err as Error).message);
+  }
+}
+
 // Initial load on server startup
 loadStoreFromDisk();
+ensureDbSchema().catch(() => {});
 
 // Auto-purge garbage profiles on startup
 function purgeGarbageProfiles() {
@@ -277,6 +290,7 @@ export async function searchCanonicalPeople(params: {
   status?: string;
 }): Promise<PersonRecord[]> {
   // Try Postgres query first if DB connected
+  await ensureDbSchema();
   try {
     const client = await dbPool.connect();
     try {
