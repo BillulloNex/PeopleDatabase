@@ -282,6 +282,24 @@ export function sanitizeAndValidateProfile(profile: ExtractedPersonProfile): Ext
 /**
  * Searches stored canonical people using query filters, skills, location, or full text.
  */
+/**
+ * Returns the total number of profiles in the database.
+ */
+export async function getTotalProfileCount(): Promise<number> {
+  await ensureDbSchema();
+  try {
+    const client = await dbPool.connect();
+    try {
+      const res = await client.query('SELECT COUNT(*) as total FROM canonical_people');
+      return parseInt(res.rows[0].total, 10);
+    } finally {
+      client.release();
+    }
+  } catch {
+    return memoryStore.size;
+  }
+}
+
 export async function searchCanonicalPeople(params: {
   query?: string;
   skill?: string;

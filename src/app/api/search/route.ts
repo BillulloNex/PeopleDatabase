@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { searchCanonicalPeople } from '@/resolver/matcher';
+import { searchCanonicalPeople, getTotalProfileCount } from '@/resolver/matcher';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -11,10 +11,14 @@ export async function GET(request: Request) {
   const limit = parseInt(searchParams.get('limit') || '50', 10);
 
   try {
-    const people = await searchCanonicalPeople({ query, company, location, skill, status, limit: Math.min(limit, 50000) });
+    const [people, totalCount] = await Promise.all([
+      searchCanonicalPeople({ query, company, location, skill, status, limit: Math.min(limit, 50000) }),
+      getTotalProfileCount(),
+    ]);
     return NextResponse.json({
       success: true,
-      total: people.length,
+      total: totalCount,
+      returned: people.length,
       data: people
     });
   } catch (err: any) {

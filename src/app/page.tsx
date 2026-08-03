@@ -23,6 +23,7 @@ import { PersonRecord, IngestionRunLog } from '@/db/client';
 
 export default function PeopleExplorerPage() {
   const [people, setPeople] = useState<PersonRecord[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [runs, setRuns] = useState<IngestionRunLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -67,6 +68,7 @@ export default function PeopleExplorerPage() {
       const json = await res.json();
       if (json.success) {
         setPeople(json.data);
+        setTotalCount(json.total || json.data.length);
       }
     } catch (err) {
       console.error('Failed to load people:', err);
@@ -164,7 +166,7 @@ export default function PeopleExplorerPage() {
             <span>Total Entities Index</span>
             <Globe className="w-4 h-4 text-indigo-400" />
           </div>
-          <div className="text-3xl font-extrabold text-white">{people.length}</div>
+          <div className="text-3xl font-extrabold text-white">{totalCount.toLocaleString()}</div>
           <div className="text-xs text-emerald-400 mt-1 flex items-center gap-1">
             <span>↑ Continuous ingestion active</span>
           </div>
