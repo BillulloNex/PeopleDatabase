@@ -8,9 +8,10 @@ export async function GET(request: Request) {
   const location = searchParams.get('location') || undefined;
   const skill = searchParams.get('skill') || undefined;
   const status = searchParams.get('status') || undefined;
+  const limit = parseInt(searchParams.get('limit') || '50', 10);
 
   try {
-    const people = await searchCanonicalPeople({ query, company, location, skill, status });
+    const people = await searchCanonicalPeople({ query, company, location, skill, status, limit: Math.min(limit, 50000) });
     return NextResponse.json({
       success: true,
       total: people.length,

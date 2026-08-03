@@ -288,6 +288,7 @@ export async function searchCanonicalPeople(params: {
   company?: string;
   location?: string;
   status?: string;
+  limit?: number;
 }): Promise<PersonRecord[]> {
   // Try Postgres query first if DB connected
   await ensureDbSchema();
@@ -319,7 +320,7 @@ export async function searchCanonicalPeople(params: {
         idx++;
       }
 
-      sql += ' ORDER BY created_at DESC LIMIT 50';
+      sql += ` ORDER BY created_at DESC LIMIT ${params.limit || 50}`;
       const res = await client.query(sql, values);
       if (res.rows.length > 0) {
         const records = res.rows.map(rowToPersonRecord);
