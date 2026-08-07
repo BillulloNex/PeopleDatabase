@@ -1,8 +1,8 @@
 name: Scheduled GitHub Developer Ingestion
 
 on:
-  schedule:
-    - cron: '0 0 * * *' # Run daily at midnight
+  # schedule:
+  #   - cron: '0 0 * * *' # Run daily at midnight (Temporarily disabled)
   workflow_dispatch:
     inputs:
       username:

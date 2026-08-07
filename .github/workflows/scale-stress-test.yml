@@ -1,8 +1,8 @@
 name: 🚀 High-Throughput Scale & Stress Test Engine
 
 on:
-  schedule:
-    - cron: '*/15 * * * *' # Run every 15 minutes around the clock
+  # schedule:
+  #   - cron: '*/15 * * * *' # Run every 15 minutes around the clock (Temporarily disabled)
   workflow_dispatch:
     inputs:
       batch_size:

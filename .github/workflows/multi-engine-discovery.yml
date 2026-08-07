@@ -1,8 +1,8 @@
 name: 🌐 Multi-Engine Discovery Crawler
 
 on:
-  schedule:
-    - cron: '*/12 * * * *'  # Every 12 minutes, 24/7
+  # schedule:
+  #   - cron: '*/12 * * * *'  # Every 12 minutes, 24/7 (Temporarily disabled)
   workflow_dispatch:
 
 jobs:
